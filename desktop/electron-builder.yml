@@ -1,0 +1,17 @@
+appId: com.devinspector.desktop
+productName: DevInspector
+directories:
+  output: dist
+files:
+  - out/**/*
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: DevInspector
