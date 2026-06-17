@@ -11,7 +11,8 @@ import { useNetworkStore } from './stores/networkStore'
 import { useConsoleStore } from './stores/consoleStore'
 import { useTimelineStore } from './stores/timelineStore'
 import { useConnectionStore } from './stores/connectionStore'
-import { TAB_NETWORK, TAB_CONSOLE, TAB_TIMELINE, TabId } from './utils/constants'
+import { TAB_NETWORK, TAB_CONSOLE, TAB_TIMELINE, TAB_DATABASE, TabId } from './utils/constants'
+import { DatabasePanel } from './components/Database/DatabasePanel'
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabId>(TAB_NETWORK)
@@ -63,6 +64,12 @@ export const App: React.FC = () => {
           {activeTab === TAB_TIMELINE && (
             <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
               <TimelinePanel />
+            </div>
+          )}
+
+          {activeTab === TAB_DATABASE && (
+            <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+              <DatabasePanel />
             </div>
           )}
         </div>

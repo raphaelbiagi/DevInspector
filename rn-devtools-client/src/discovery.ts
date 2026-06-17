@@ -24,11 +24,15 @@ const DISCOVERY_TIMEOUT_MS = 3000
  * Tenta descobrir o DevInspector Desktop na rede local.
  * Retorna null se não encontrar dentro do timeout.
  */
-export async function discoverDesktop(): Promise<DiscoveryResult | null> {
+export async function discoverDesktop(lifesaverIp?: string | null): Promise<DiscoveryResult | null> {
   // Em React Native, não temos acesso direto a UDP sockets
   // A estratégia é tentar conectar em candidatos conhecidos
 
   const candidates = getCandidateHosts()
+  if (lifesaverIp && !candidates.includes(lifesaverIp)) {
+    candidates.push(lifesaverIp)
+  }
+  
   const port = 8347 // Porta padrão do DevInspector
 
   // Tenta cada candidato em paralelo com timeout
@@ -66,8 +70,14 @@ export function getFallbackHost(): string {
       const match = constants.scriptURL.match(/(?:http|exp)s?:\/\/([^:/]+)/)
       console.log('[DevInspector] Regex match:', match)
       if (match && match[1]) {
-        console.log('[DevInspector] IP encontrado via scriptURL:', match[1])
-        return match[1]
+        let ip = match[1]
+        // Se for localhost no Android, precisamos mapear para o emulador
+        if ((ip === 'localhost' || ip === '127.0.0.1') && Platform.OS === 'android') {
+          console.log('[DevInspector] Mapeando localhost para 10.0.2.2 no Android')
+          ip = '10.0.2.2'
+        }
+        console.log('[DevInspector] IP encontrado via scriptURL:', ip)
+        return ip
       }
     }
   } catch (e) {
@@ -84,8 +94,13 @@ export function getFallbackHost(): string {
     if (hostUri) {
       const match = hostUri.match(/^([^:/]+)/)
       if (match && match[1]) {
-        console.log('[DevInspector] IP encontrado via Expo Constants:', match[1])
-        return match[1]
+        let ip = match[1]
+        if ((ip === 'localhost' || ip === '127.0.0.1') && Platform.OS === 'android') {
+          console.log('[DevInspector] Mapeando localhost do Expo para 10.0.2.2 no Android')
+          ip = '10.0.2.2'
+        }
+        console.log('[DevInspector] IP encontrado via Expo Constants:', ip)
+        return ip
       }
     }
   } catch (e) {

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react'
-import { Modal, View, Text, TouchableOpacity, FlatList, StyleSheet, SafeAreaView, ScrollView, TextInput } from 'react-native'
+import { Modal, View, Text, TouchableOpacity, FlatList, StyleSheet, ScrollView, TextInput, Platform, StatusBar } from 'react-native'
 import { Bug } from 'lucide-react-native'
 import { useDevInspectorHistory } from '../hooks/useDevInspectorHistory'
 import type { DevInspectorEvent } from '../types'
@@ -21,20 +21,59 @@ export const DebuggerModal = ({ visible, onClose }: { visible: boolean; onClose:
 
   const filteredHistory = useMemo(() => {
     if (activeTab === 'network') {
-      return history.filter(e => {
-        if (e.type !== 'http:request' && e.type !== 'http:response') return false
-        
+      const grouped = new Map<string, any>()
+      
+      const networkEvents = history.filter(e => e.type === 'http:request' || e.type === 'http:response')
+      const chronological = [...networkEvents].reverse()
+      
+      chronological.forEach(e => {
         const p = e.payload as any
-        const method = (p.method || '').toUpperCase()
-        const url = (p.url || '').toLowerCase()
+        const id = p.id || p.requestId
+        if (!id) return
         
-        if (selectedMethods.length > 0 && method && !selectedMethods.includes(method)) return false
-        if (searchUrl && !url.includes(searchUrl.toLowerCase())) return false
+        if (!grouped.has(id)) {
+          grouped.set(id, { req: {}, res: {}, timestamp: p.timestamp })
+        }
         
-        return true
+        const entry = grouped.get(id)
+        if (e.type === 'http:request') {
+          entry.req = p
+          entry.timestamp = p.timestamp
+        } else {
+          entry.res = p
+          if (!entry.req.method) entry.timestamp = p.timestamp
+        }
       })
+      
+      let mergedList = Array.from(grouped.values()).map(entry => ({
+        type: 'network:merged',
+        payload: {
+          id: entry.req.id || entry.res.requestId,
+          url: entry.req.url || 'Unknown URL',
+          method: entry.req.method || 'UNKNOWN',
+          statusCode: entry.res.statusCode,
+          duration: entry.res.duration,
+          size: entry.res.size,
+          requestHeaders: entry.req.headers,
+          responseHeaders: entry.res.headers,
+          requestBody: entry.req.body,
+          responseBody: entry.res.body,
+          timestamp: entry.timestamp
+        }
+      })).sort((a, b) => b.payload.timestamp - a.payload.timestamp)
+      
+      if (selectedMethods.length > 0) {
+        mergedList = mergedList.filter(item => selectedMethods.includes(item.payload.method.toUpperCase()))
+      }
+      
+      if (searchUrl) {
+        const lowerSearch = searchUrl.toLowerCase()
+        mergedList = mergedList.filter(item => item.payload.url.toLowerCase().includes(lowerSearch))
+      }
+      
+      return mergedList as DevInspectorEvent[]
     }
-    
+
     return history.filter(e => {
       if (e.type !== 'console:entry') return false
       if (!searchUrl) return true
@@ -45,43 +84,31 @@ export const DebuggerModal = ({ visible, onClose }: { visible: boolean; onClose:
   }, [history, activeTab, searchUrl, selectedMethods])
 
   const renderNetworkItem = ({ item }: { item: DevInspectorEvent }) => {
-    const isResponse = item.type === 'http:response'
     const payload = item.payload as any
-    const method = payload.method || (isResponse ? 'RES' : 'REQ')
-    const url = payload.url || `Req ID: ${payload.requestId?.substring(0, 8)}`
+    const method = payload.method
+    const url = payload.url
     const status = payload.statusCode
     const isError = status >= 400 || status === 0
-    
+
     // Cores sutis para visual minimalista
-    let methodColor = '#a1a1aa' // default (muted)
-    if (method === 'GET') methodColor = '#4ade80' // pastel green
-    else if (method === 'POST') methodColor = '#60a5fa' // pastel blue
-    else if (method === 'PUT' || method === 'PATCH') methodColor = '#fbbf24' // pastel amber
-    else if (method === 'DELETE') methodColor = '#f87171' // pastel red
-    else if (isResponse) methodColor = '#c084fc' // pastel purple
+    const statusColor = isError ? '#EF5350' : '#00E676'
+
+    let methodColor = '#a1a1aa'
+    if (method === 'GET') methodColor = '#4ade80'
+    else if (method === 'POST') methodColor = '#60a5fa'
+    else if (method === 'PUT' || method === 'PATCH') methodColor = '#fbbf24'
+    else if (method === 'DELETE') methodColor = '#f87171'
 
     return (
-      <TouchableOpacity 
-        style={styles.row} 
-        onPress={() => {
-          setSelectedEvent(item)
-          setDetailTab('overview')
-        }}
-      >
+      <TouchableOpacity style={styles.row} onPress={() => { setSelectedEvent(item); setDetailTab('overview') }}>
         <View style={styles.rowHeader}>
-          <View style={styles.badge}>
-            <Text style={[styles.method, { color: methodColor }]}>{method}</Text>
-          </View>
-          <Text style={styles.url} numberOfLines={1} ellipsizeMode="tail">{url}</Text>
+          <View style={[styles.badge, { borderColor: methodColor }]}><Text style={[styles.method, { color: methodColor }]}>{method}</Text></View>
+          <Text style={styles.url} numberOfLines={1} ellipsizeMode="middle">{url}</Text>
         </View>
         <View style={styles.rowFooter}>
-          {status !== undefined && (
-            <Text style={[styles.status, { color: isError ? '#EF5350' : '#00E676' }]}>
-              {status === 0 ? 'FAIL' : status}
-            </Text>
-          )}
-          {payload.duration !== undefined && <Text style={styles.meta}>{payload.duration}ms</Text>}
-          {payload.size !== undefined && <Text style={styles.meta}>{formatBytes(payload.size)}</Text>}
+          <Text style={[styles.status, { color: statusColor }]}>{status ? status : 'Pending'}</Text>
+          <Text style={styles.meta}>{payload.duration ? `${payload.duration}ms` : '...'}</Text>
+          <Text style={styles.meta}>{formatBytes(payload.size)}</Text>
         </View>
       </TouchableOpacity>
     )
@@ -91,13 +118,13 @@ export const DebuggerModal = ({ visible, onClose }: { visible: boolean; onClose:
     const payload = item.payload as any
     const isError = payload.level === 'error' || payload.level === 'fatal'
     const isWarn = payload.level === 'warn'
-    
+
     const color = isError ? '#FF5252' : isWarn ? '#FFD740' : '#4CA1AF'
     const bg = isError ? 'rgba(255, 82, 82, 0.08)' : isWarn ? 'rgba(255, 215, 64, 0.08)' : '#1E1E1E'
     const borderColor = isError ? 'rgba(255, 82, 82, 0.3)' : isWarn ? 'rgba(255, 215, 64, 0.3)' : '#2C2C2C'
-    
+
     return (
-      <TouchableOpacity 
+      <TouchableOpacity
         style={[styles.row, { backgroundColor: bg, borderColor: borderColor, borderWidth: 1, padding: 10 }]}
         onPress={() => {
           setSelectedEvent(item)
@@ -118,7 +145,7 @@ export const DebuggerModal = ({ visible, onClose }: { visible: boolean; onClose:
         <Text style={[styles.logText, { color: isError || isWarn ? color : '#E0E0E0' }]} numberOfLines={3}>
           {payload.message || JSON.stringify(payload.args)}
         </Text>
-        
+
         {isError && payload.stackTrace && (
           <Text style={[styles.logText, { color: '#FF8A80', marginTop: 6, opacity: 0.8, fontSize: 11 }]} numberOfLines={2}>
             {payload.stackTrace.split('\n')[0]}
@@ -142,15 +169,28 @@ export const DebuggerModal = ({ visible, onClose }: { visible: boolean; onClose:
     if (!body) return <Text style={styles.emptyTxt}>No body</Text>
     let parsed = body
     if (typeof body === 'string') {
-      try { parsed = JSON.parse(body) } catch {}
+      try { parsed = JSON.parse(body) } catch { }
     }
-    return <Text style={styles.jsonText}>{JSON.stringify(parsed, null, 2)}</Text>
+
+    let jsonStr = ''
+    try {
+      jsonStr = JSON.stringify(parsed, null, 2)
+    } catch (e) {
+      jsonStr = String(parsed)
+    }
+
+    // Performance: Trunca payloads gigantes para evitar travar a UI do celular
+    if (jsonStr && jsonStr.length > 8000) {
+      jsonStr = jsonStr.substring(0, 8000) + '\n\n... [Conteúdo truncado por segurança (muito longo)]'
+    }
+
+    return <Text style={styles.jsonText}>{jsonStr}</Text>
   }
 
   const renderDetails = () => {
     if (!selectedEvent) return null
     const payload = selectedEvent.payload as any
-    const isNetwork = selectedEvent.type.startsWith('http')
+    const isNetwork = selectedEvent.type.startsWith('http') || selectedEvent.type === 'network:merged'
 
     return (
       <View style={styles.detailsContainer}>
@@ -187,22 +227,32 @@ export const DebuggerModal = ({ visible, onClose }: { visible: boolean; onClose:
 
           {isNetwork && detailTab === 'headers' && (
             <View>
-              <Text style={styles.sectionTitle}>Headers</Text>
-              <View style={styles.card}>{renderHeadersMap(payload.headers)}</View>
+              {payload.requestHeaders && (
+                <>
+                  <Text style={styles.sectionTitle}>Request Headers</Text>
+                  <View style={styles.card}>{renderHeadersMap(payload.requestHeaders)}</View>
+                </>
+              )}
+              {payload.responseHeaders && (
+                <>
+                  <Text style={styles.sectionTitle}>Response Headers</Text>
+                  <View style={styles.card}>{renderHeadersMap(payload.responseHeaders)}</View>
+                </>
+              )}
             </View>
           )}
 
           {isNetwork && detailTab === 'payload' && (
             <View>
               <Text style={styles.sectionTitle}>Request Body (POST/PUT)</Text>
-              <View style={styles.card}>{renderJsonBody(payload.body)}</View>
+              <View style={styles.card}>{renderJsonBody(payload.requestBody)}</View>
             </View>
           )}
 
           {isNetwork && detailTab === 'response' && (
             <View>
               <Text style={styles.sectionTitle}>Response Data</Text>
-              <View style={styles.card}>{renderJsonBody(payload.body)}</View>
+              <View style={styles.card}>{renderJsonBody(payload.responseBody)}</View>
             </View>
           )}
 
@@ -211,9 +261,18 @@ export const DebuggerModal = ({ visible, onClose }: { visible: boolean; onClose:
               <Text style={styles.sectionTitle}>Console Details</Text>
               <View style={styles.card}>
                 <View style={styles.kvRow}><Text style={styles.kvKey}>Level:</Text><Text style={styles.kvVal}>{payload.level}</Text></View>
-                <View style={styles.kvRow}><Text style={styles.kvKey}>Message:</Text><Text style={styles.kvVal}>{payload.message}</Text></View>
+
+                <View style={{ marginTop: 12 }}>
+                  <Text style={[styles.kvKey, { marginBottom: 6 }]}>Payload / Data:</Text>
+                  <View style={{ backgroundColor: '#09090b', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#27272a' }}>
+                    {payload.args && payload.args.length > 0
+                      ? renderJsonBody(payload.args.length === 1 ? payload.args[0] : payload.args)
+                      : <Text style={styles.jsonText}>{payload.message}</Text>}
+                  </View>
+                </View>
+
                 {payload.stackTrace && (
-                  <View style={{ marginTop: 12 }}>
+                  <View style={{ marginTop: 16 }}>
                     <Text style={styles.kvKey}>Stack Trace:</Text>
                     <Text style={[styles.kvVal, { color: '#EF5350', marginTop: 4 }]}>{payload.stackTrace}</Text>
                   </View>
@@ -228,7 +287,7 @@ export const DebuggerModal = ({ visible, onClose }: { visible: boolean; onClose:
 
   return (
     <Modal visible={visible} animationType="slide" transparent={false}>
-      <SafeAreaView style={styles.container}>
+      <View style={styles.container}>
         <View style={styles.header}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <Bug color="#4CA1AF" size={20} />
@@ -258,7 +317,7 @@ export const DebuggerModal = ({ visible, onClose }: { visible: boolean; onClose:
                 value={searchUrl}
                 onChangeText={setSearchUrl}
               />
-              
+
               {activeTab === 'network' && (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row' }}>
                   {['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].map(method => {
@@ -306,13 +365,13 @@ export const DebuggerModal = ({ visible, onClose }: { visible: boolean; onClose:
             ListEmptyComponent={<Text style={styles.emptyList}>Nenhum evento capturado ainda.</Text>}
           />
         )}
-      </SafeAreaView>
+      </View>
     </Modal>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#09090b' },
+  container: { flex: 1, backgroundColor: '#09090b', paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 44 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#27272a', backgroundColor: '#09090b' },
   title: { color: '#fafafa', fontSize: 16, fontWeight: '600', letterSpacing: 0.3 },
   closeHeaderBtn: { padding: 4 },
@@ -324,7 +383,7 @@ const styles = StyleSheet.create({
   activeTabText: { color: '#fafafa', fontWeight: '600' },
   list: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 32 },
   emptyList: { color: '#71717a', textAlign: 'center', marginTop: 40, fontSize: 13 },
-  
+
   row: { paddingVertical: 14, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: '#18181b', backgroundColor: '#09090b' },
   rowHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
   badge: { backgroundColor: '#18181b', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, borderWidth: 1, borderColor: '#27272a' },
@@ -334,7 +393,7 @@ const styles = StyleSheet.create({
   status: { fontWeight: '600', fontSize: 11 },
   meta: { color: '#71717a', fontSize: 11 },
   logText: { fontSize: 12, fontFamily: 'monospace' },
-  
+
   detailsContainer: { flex: 1, backgroundColor: '#09090b' },
   detailsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, backgroundColor: '#09090b', borderBottomWidth: 1, borderBottomColor: '#27272a' },
   detailsTitle: { color: '#fafafa', fontWeight: '600', fontSize: 15 },
@@ -344,7 +403,7 @@ const styles = StyleSheet.create({
   dTabActive: { borderBottomWidth: 2, borderBottomColor: '#fafafa' },
   dTabTxt: { color: '#71717a', fontSize: 12, fontWeight: '500' },
   dTabTxtActive: { color: '#fafafa', fontWeight: '600' },
-  
+
   detailsScroll: { flex: 1, padding: 16 },
   sectionTitle: { color: '#71717a', fontSize: 11, fontWeight: '600', marginBottom: 8, marginTop: 4, textTransform: 'uppercase', letterSpacing: 0.5 },
   card: { backgroundColor: '#18181b', padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#27272a', marginBottom: 24 },

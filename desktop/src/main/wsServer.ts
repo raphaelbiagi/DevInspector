@@ -263,6 +263,25 @@ export class DevToolsServer extends EventEmitter {
     return this.sessionStore
   }
 
+  async executeDbCommand(payload: any): Promise<any> {
+    return new Promise((resolve, reject) => {
+      if (!this.connectedClient) {
+        return reject(new Error('Nenhum dispositivo conectado'))
+      }
+      
+      const timer = setTimeout(() => reject(new Error('Timeout aguardando resposta do banco de dados no dispositivo')), 15000)
+
+      this.connectedClient.emit('server:db:execute', payload, (response: any) => {
+        clearTimeout(timer)
+        if (response && response.success) {
+          resolve(response.data)
+        } else {
+          reject(new Error(response?.error || 'Erro desconhecido ao executar comando de banco de dados'))
+        }
+      })
+    })
+  }
+
   stop(): void {
     this.io?.close()
     this.httpServer?.close()

@@ -3,6 +3,7 @@ import { useNetworkStore } from '../../stores/networkStore'
 import { useConsoleStore } from '../../stores/consoleStore'
 import { formatBytes } from '../../utils/formatters'
 import { SERVER_PORT } from '../../utils/constants'
+import packageJson from '../../../../package.json'
 
 export const StatusBar: React.FC = () => {
   const { total, failed, totalSize } = useNetworkStore(
@@ -15,6 +16,10 @@ export const StatusBar: React.FC = () => {
 
   return (
     <div className="app-statusbar">
+      <div className="stat-item" style={{ color: 'var(--color-text-muted)', fontWeight: 600 }}>
+        v{packageJson.version}
+      </div>
+      
       <div className="stat-item">
         WebSocket Server: <span className="stat-value">{SERVER_PORT}</span>
       </div>

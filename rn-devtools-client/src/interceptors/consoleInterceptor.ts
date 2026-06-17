@@ -49,20 +49,45 @@ export function installConsoleInterceptor(client: DevToolsClient) {
     }
   }
 
-  console.log = createInterceptor('log', originalConsoleLog)
-  console.warn = createInterceptor('warn', originalConsoleWarn)
-  console.error = createInterceptor('error', originalConsoleError)
-  console.info = createInterceptor('info', originalConsoleInfo)
-  console.table = createInterceptor('table', originalConsoleTable)
+  const interceptors = {
+    log: createInterceptor('log', originalConsoleLog),
+    warn: createInterceptor('warn', originalConsoleWarn),
+    error: createInterceptor('error', originalConsoleError),
+    info: createInterceptor('info', originalConsoleInfo),
+    table: createInterceptor('table', originalConsoleTable)
+  }
+
+  console.log = interceptors.log
+  console.warn = interceptors.warn
+  console.error = interceptors.error
+  console.info = interceptors.info
+  console.table = interceptors.table
+
+  // --- STICKY INTERCEPTOR ---
+  // O React Native (LogBox) sobrescreve o console.warn/error após a inicialização.
+  // Este watcher garante que nós re-envolvemos qualquer nova sobrescrita, mantendo a captura.
+  if (!(global as any).__devInspectorConsoleWatcher) {
+    ;(global as any).__devInspectorConsoleWatcher = setInterval(() => {
+      const methods = ['log', 'warn', 'error', 'info', 'table'] as const
+      methods.forEach(method => {
+        if (console[method] !== interceptors[method]) {
+          // Alguém (provavelmente o LogBox) sobrescreveu o console!
+          const newOriginal = console[method]
+          interceptors[method] = createInterceptor(method, newOriginal)
+          console[method] = interceptors[method]
+        }
+      })
+    }, 1000)
+  }
 
   // --- RASTREAMENTO GLOBAL DE CRASHES (Diferencial) ---
   if (!isTrackingErrors) {
     isTrackingErrors = true
     
     // Captura exceções não tratadas no React Native
-    if (global.ErrorUtils) {
-      originalErrorHandler = global.ErrorUtils.getGlobalHandler()
-      global.ErrorUtils.setGlobalHandler((error: any, isFatal?: boolean) => {
+    if ((global as any).ErrorUtils) {
+      originalErrorHandler = (global as any).ErrorUtils.getGlobalHandler()
+      ;(global as any).ErrorUtils.setGlobalHandler((error: any, isFatal?: boolean) => {
         client.send({
           type: 'console:log',
           payload: {
@@ -113,8 +138,13 @@ export function uninstallConsoleInterceptor() {
     originalConsoleTable = null
   }
   
-  if (global.ErrorUtils && originalErrorHandler) {
-    global.ErrorUtils.setGlobalHandler(originalErrorHandler)
+  if ((global as any).__devInspectorConsoleWatcher) {
+    clearInterval((global as any).__devInspectorConsoleWatcher)
+    ;(global as any).__devInspectorConsoleWatcher = null
+  }
+  
+  if ((global as any).ErrorUtils && originalErrorHandler) {
+    (global as any).ErrorUtils.setGlobalHandler(originalErrorHandler)
     originalErrorHandler = null
     isTrackingErrors = false
   }

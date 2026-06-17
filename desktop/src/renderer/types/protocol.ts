@@ -16,6 +16,7 @@ export interface DevInspectorAPI {
   listSessions: () => Promise<any[]>
   loadSession: (sessionId: string) => Promise<any | null>
   toggleFloatingDebugger: (enabled: boolean) => Promise<void>
+  executeDbCommand: (payload: any) => Promise<any>
 }
 
 declare global {

@@ -3,6 +3,7 @@ import { NetworkRequest } from '../../types/network'
 import { Tabs } from '../shared/Tabs'
 import { JsonViewer } from '../shared/JsonViewer'
 import { formatBytes, formatDuration, getMethodColor, getStatusColor } from '../../utils/formatters'
+import { X } from 'lucide-react'
 
 interface RequestDetailProps {
   request: NetworkRequest
@@ -57,7 +58,9 @@ export const RequestDetail: React.FC<RequestDetailProps> = ({ request, onClose }
             {request.url}
           </span>
         </div>
-        <button className="btn-icon" onClick={onClose}>✕</button>
+        <button className="btn-icon" style={{ color: '#fff' }} onClick={onClose}>
+          <X size={16} />
+        </button>
       </div>
 
       <Tabs

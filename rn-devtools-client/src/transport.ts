@@ -8,6 +8,7 @@ interface TransportConfig {
   port?: number
   onStatusChange?: (status: ConnectionStatus) => void
   onToggleDebugger?: (visible: boolean) => void
+  onDbCommand?: (payload: any) => Promise<any>
 }
 
 export class DevInspectorTransport {
@@ -40,7 +41,7 @@ export class DevInspectorTransport {
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
-      timeout: 10000,
+      timeout: 60000, // Aumentado para evitar timeout na conexão se a thread estiver ocupada
       transports: ['websocket'],
     })
 
@@ -77,6 +78,19 @@ export class DevInspectorTransport {
 
     this.socket.on('server:toggle-debugger', (data: { enabled: boolean }) => {
       this.config.onToggleDebugger?.(data.enabled)
+    })
+
+    this.socket.on('server:db:execute', async (payload: any, callback: (response: any) => void) => {
+      if (this.config.onDbCommand) {
+        try {
+          const result = await this.config.onDbCommand(payload)
+          callback({ success: true, data: result })
+        } catch (err: any) {
+          callback({ success: false, error: err?.message || String(err) })
+        }
+      } else {
+        callback({ success: false, error: 'O app não configurou o onDbCommand.' })
+      }
     })
   }
 

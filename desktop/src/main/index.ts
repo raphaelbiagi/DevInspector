@@ -125,6 +125,11 @@ function setupIPC(): void {
   ipcMain.handle('load-session', (_event, sessionId: string) => {
     return devToolsServer?.getSessionStore().loadSession(sessionId) ?? null
   })
+
+  ipcMain.handle('execute-db-command', async (_event, payload: any) => {
+    if (!devToolsServer) throw new Error('Servidor não inicializado')
+    return await devToolsServer.executeDbCommand(payload)
+  })
 }
 
 app.whenReady().then(() => {

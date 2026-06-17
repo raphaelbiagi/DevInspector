@@ -1,6 +1,6 @@
 import React from 'react'
-import { Network, TerminalSquare, Activity, Trash2, Download } from 'lucide-react'
-import { TAB_NETWORK, TAB_CONSOLE, TAB_TIMELINE, TabId } from '../../utils/constants'
+import { Network, TerminalSquare, Activity, Database, Trash2, Download } from 'lucide-react'
+import { TAB_NETWORK, TAB_CONSOLE, TAB_TIMELINE, TAB_DATABASE, TabId } from '../../utils/constants'
 import { useConsoleStore } from '../../stores/consoleStore'
 import { useTimelineStore } from '../../stores/timelineStore'
 
@@ -58,6 +58,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
           >
             <Activity size={22} color={activeTab === TAB_TIMELINE ? 'var(--color-accent)' : 'var(--color-text)'} strokeWidth={2} />
             {anomalyCount > 0 && <span className="sidebar-badge" style={{ position: 'absolute', top: 4, right: 8, background: 'var(--color-warning)', color: '#fff', fontSize: 10, padding: '2px 6px', borderRadius: 10, fontWeight: 'bold' }}>{anomalyCount > 99 ? '99+' : anomalyCount}</span>}
+          </button>
+        </div>
+
+        <div className="tooltip-wrapper" style={{ width: '100%', display: 'flex', justifyContent: 'center', position: 'relative' }}>
+          <button
+            title="Inspetor de Banco de Dados"
+            className={`sidebar-btn ${activeTab === TAB_DATABASE ? 'active' : ''}`}
+            onClick={() => onTabChange(TAB_DATABASE)}
+            style={{ border: 'none', background: activeTab === TAB_DATABASE ? 'var(--bg-active)' : 'transparent', padding: 12, borderRadius: 'var(--radius-md)', cursor: 'pointer', opacity: activeTab === TAB_DATABASE ? 1 : 0.5, transition: 'all 0.2s' }}
+          >
+            <Database size={22} color={activeTab === TAB_DATABASE ? 'var(--color-accent)' : 'var(--color-text)'} strokeWidth={2} />
           </button>
         </div>
       </div>

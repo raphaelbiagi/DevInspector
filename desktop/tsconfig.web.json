@@ -8,6 +8,7 @@
     "esModuleInterop": true,
     "strict": true,
     "skipLibCheck": true,
+    "resolveJsonModule": true,
     "outDir": "./out",
     "declaration": true,
     "sourceMap": true,
@@ -18,6 +19,7 @@
   },
   "include": [
     "src/renderer/**/*.ts",
-    "src/renderer/**/*.tsx"
+    "src/renderer/**/*.tsx",
+    "package.json"
   ]
 }

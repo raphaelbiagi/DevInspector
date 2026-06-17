@@ -57,6 +57,7 @@ export type DevInspectorEvent =
   | { type: 'console:entry';       payload: Record<string, unknown> }
   | { type: 'http:request';        payload: Record<string, unknown> }
   | { type: 'http:response';       payload: Record<string, unknown> }
+  | { type: 'network:merged';      payload: Record<string, unknown> }
 
 // --- Tipo legado (mantido para compatibilidade) ---
 
@@ -66,3 +67,19 @@ export type ClientMessage =
   | { type: 'network:request-error'; payload: NetworkRequestErrorPayload }
   | { type: 'console:log'; payload: ConsoleLogEntry }
   | { type: 'client:info'; payload: ClientInfo }
+
+// --- Tipos de Banco de Dados ---
+
+export interface DatabaseDriver {
+  getDatabases: () => Promise<string[]>
+  getTables: (dbName: string) => Promise<string[]>
+  executeSql: (dbName: string, query: string, args?: any[]) => Promise<any>
+}
+
+export interface DbCommandPayload {
+  action: 'getDatabases' | 'getTables' | 'executeSql'
+  dbName?: string
+  query?: string
+  args?: any[]
+}
+

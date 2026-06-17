@@ -18,6 +18,7 @@ export interface DevInspectorAPI {
   listSessions: () => Promise<any[]>
   loadSession: (sessionId: string) => Promise<any | null>
   toggleFloatingDebugger: (enabled: boolean) => Promise<void>
+  executeDbCommand: (payload: any) => Promise<any>
 }
 
 function createListener(channel: string, callback: (...args: any[]) => void): () => void {
@@ -47,6 +48,7 @@ const api: DevInspectorAPI = {
   listSessions: () => ipcRenderer.invoke('list-sessions'),
   loadSession: (sessionId: string) => ipcRenderer.invoke('load-session', sessionId),
   toggleFloatingDebugger: (enabled: boolean) => ipcRenderer.invoke('toggle-floating-debugger', enabled),
+  executeDbCommand: (payload: any) => ipcRenderer.invoke('execute-db-command', payload),
 }
 
 contextBridge.exposeInMainWorld('devInspector', api)
