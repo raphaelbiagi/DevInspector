@@ -58,9 +58,48 @@ export const RequestDetail: React.FC<RequestDetailProps> = ({ request, onClose }
             {request.url}
           </span>
         </div>
-        <button className="btn-icon" style={{ color: '#fff' }} onClick={onClose}>
-          <X size={16} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button 
+            className="btn" 
+            onClick={() => {
+              let reqBody = request.requestBody
+              if (typeof reqBody === 'string') {
+                try { reqBody = JSON.parse(reqBody) } catch {}
+              }
+              const reqText = reqBody ? (typeof reqBody === 'string' ? reqBody : JSON.stringify(reqBody, null, 2)) : ''
+
+              let resBody = request.responseBody
+              if (typeof resBody === 'string') {
+                try { resBody = JSON.parse(resBody) } catch {}
+              }
+              const resText = resBody ? (typeof resBody === 'string' ? resBody : JSON.stringify(resBody, null, 2)) : ''
+
+              let message = `*URL:* ${request.url}\n*Method:* ${request.method}\n`
+              if (request.statusCode) message += `*Status:* ${request.statusCode}\n`
+              
+              const isError = !request.statusCode || request.statusCode >= 400 || request.error
+              
+              if (reqText) {
+                message += `\n*Payload:*\n\`\`\`json\n${reqText}\n\`\`\``
+              }
+              
+              if (resText && isError) {
+                message += `\n\n*Response Data:*\n\`\`\`json\n${resText}\n\`\`\``
+              }
+
+              navigator.clipboard.writeText(message).then(() => {
+                alert('Requisição e Resposta copiadas!')
+              })
+            }}
+            style={{ fontSize: 12, padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 6, background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', color: 'var(--color-text)' }}
+            title="Copiar Request/Response p/ WhatsApp"
+          >
+            <Copy size={14} /> Copiar p/ Whats
+          </button>
+          <button className="btn-icon" style={{ color: '#fff' }} onClick={onClose}>
+            <X size={16} />
+          </button>
+        </div>
       </div>
 
       <Tabs
@@ -95,30 +134,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = ({ request, onClose }
 
         {activeTab === 'request' && (
           <>
-            <div className="detail-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>Request Payload</span>
-              {!!request.requestBody && (
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button 
-                    className="btn" 
-                    onClick={() => {
-                      let body = request.requestBody
-                      if (typeof body === 'string') {
-                        try { body = JSON.parse(body) } catch {}
-                      }
-                      const text = typeof body === 'string' ? body : JSON.stringify(body, null, 2)
-                      const message = `*URL:* ${request.url}\n*Method:* ${request.method}\n*Payload:*\n\`\`\`json\n${text}\n\`\`\``
-                      navigator.clipboard.writeText(message).then(() => {
-                        alert('Payload copiado para a área de transferência!')
-                      })
-                    }}
-                    style={{ fontSize: 12, padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 6 }}
-                  >
-                    <Copy size={14} /> Copiar p/ WhatsApp
-                  </button>
-                </div>
-              )}
-            </div>
+            <div className="detail-section-title">Request Payload</div>
             {renderBody(request.requestBody)}
           </>
         )}
