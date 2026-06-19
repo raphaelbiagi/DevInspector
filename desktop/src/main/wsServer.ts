@@ -173,7 +173,7 @@ export class DevToolsServer extends EventEmitter {
               id: event.payload.id,
               level: event.payload.level,
               args: Array.isArray(event.payload.args)
-                ? event.payload.args.map(a => ({ type: typeof a, value: a }))
+                ? event.payload.args
                 : [],
               timestamp: event.payload.timestamp,
               stackTrace: event.payload.stackTrace ?? null
