@@ -61,6 +61,11 @@ export class RequestDiffer {
     if (!previous) return [{ type: 'added', value: current ?? '', line: 0 }]
     if (!current)  return [{ type: 'removed', value: previous, line: 0 }]
 
+    const MAX_DIFF_SIZE = 1 * 1024 * 1024 // 1MB
+    if (previous.length > MAX_DIFF_SIZE || current.length > MAX_DIFF_SIZE) {
+      return [{ type: 'unchanged', value: '[Payload muito grande para calcular o diff visual (>1MB)]', line: 0 }]
+    }
+
     try {
       const prevObj = JSON.parse(previous)
       const currObj = JSON.parse(current)

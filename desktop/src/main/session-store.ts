@@ -85,11 +85,12 @@ export class SessionStore {
     }
   }
 
-  private persist(): void {
+  private async persist(): Promise<void> {
     if (!this.currentSession) return
     const filePath = path.join(this.dir, `${this.currentSession.id}.json`)
     try {
-      fs.writeFileSync(filePath, JSON.stringify(this.currentSession), 'utf-8')
+      // Convertido para assíncrono para não travar a thread principal do desktop ao salvar 30MB
+      await fs.promises.writeFile(filePath, JSON.stringify(this.currentSession), 'utf-8')
     } catch {
       // Ignora erros de I/O — nunca deve travar o app
     }
