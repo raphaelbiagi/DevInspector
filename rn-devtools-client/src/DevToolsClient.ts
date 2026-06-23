@@ -20,7 +20,7 @@ export class DevToolsClient {
   private historyListeners: Array<() => void> = []
 
   // Visibilidade do bolha flutuante
-  private isVisible = true
+  private isVisible = false
   private visibilityListeners: Array<(visible: boolean) => void> = []
   private notifyTimeout: ReturnType<typeof setTimeout> | null = null
 

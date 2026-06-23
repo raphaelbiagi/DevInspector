@@ -22,20 +22,14 @@ export function installXhrInterceptor(client: DevToolsClient) {
   originalXhrSend = XMLHttpRequest.prototype.send
   originalXhrSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader
 
-  XMLHttpRequest.prototype.open = function(
-    method: string, 
-    url: string | URL, 
-    async?: boolean, 
-    username?: string | null, 
-    password?: string | null
-  ) {
+  XMLHttpRequest.prototype.open = function(method: string, url: string | URL) {
     const xhr = this as InterceptedXHR
     xhr.__devinspector_id = generateUuid()
-    xhr.__devinspector_method = method.toUpperCase()
-    xhr.__devinspector_url = url.toString()
+    xhr.__devinspector_method = typeof method === 'string' ? method.toUpperCase() : 'GET'
+    xhr.__devinspector_url = url ? url.toString() : ''
     xhr.__devinspector_requestHeaders = {}
 
-    return originalXhrOpen.call(this, method, url, async !== false, username, password)
+    return originalXhrOpen.apply(this, arguments)
   }
 
   XMLHttpRequest.prototype.setRequestHeader = function(header: string, value: string) {
@@ -43,7 +37,7 @@ export function installXhrInterceptor(client: DevToolsClient) {
     if (xhr.__devinspector_requestHeaders) {
       xhr.__devinspector_requestHeaders[header] = value
     }
-    return originalXhrSetRequestHeader.call(this, header, value)
+    return originalXhrSetRequestHeader.apply(this, arguments)
   }
 
   XMLHttpRequest.prototype.send = function(data?: Document | XMLHttpRequestBodyInit | null) {
@@ -77,7 +71,17 @@ export function installXhrInterceptor(client: DevToolsClient) {
         const duration = endTime - xhr.__devinspector_startTime
 
         if (xhr.status === 0) {
-          // It's likely an error/abort that didn't trigger onerror
+          // Status 0 in React Native usually means a network error or abort.
+          // We should report it as an error rather than ignoring it completely.
+          client.send({
+            type: 'network:request-error',
+            payload: {
+              id: xhr.__devinspector_id,
+              error: 'Network Error / Aborted (Status 0)',
+              endTime,
+              duration
+            }
+          })
           return
         }
 
@@ -149,7 +153,7 @@ export function installXhrInterceptor(client: DevToolsClient) {
       xhr.addEventListener('timeout', handleError)
     }
 
-    return originalXhrSend.call(this, data)
+    return originalXhrSend.apply(this, arguments)
   }
 }
 
