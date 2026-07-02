@@ -72,6 +72,9 @@ function startServer(): void {
 
   // Novos eventos do protocolo unificado
   devToolsServer.on('devinspector:event', (event) => {
+    if (event.type === 'db:chunk') {
+      mainWindow?.webContents.send('db-chunk', event.payload)
+    }
     mainWindow?.webContents.send('devinspector:event', event)
   })
 

@@ -4,7 +4,7 @@ import { useConnectionStore } from '../../stores/connectionStore'
 
 export const Header: React.FC = () => {
   const { connected, clientInfo } = useConnectionStore()
-  const [inAppUiEnabled, setInAppUiEnabled] = useState(true)
+  const [inAppUiEnabled, setInAppUiEnabled] = useState(false)
 
   return (
     <div className="app-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: 'var(--header-height)', padding: '0 16px', background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border-color)', userSelect: 'none' }}>

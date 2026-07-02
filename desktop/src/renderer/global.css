@@ -193,6 +193,10 @@ code, pre, .mono {
   animation: pulse 1.5s ease-in-out infinite;
 }
 
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
 /* ============================================
    Loading Overlay
    ============================================ */

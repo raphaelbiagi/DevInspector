@@ -19,6 +19,7 @@ export interface DevInspectorAPI {
   loadSession: (sessionId: string) => Promise<any | null>
   toggleFloatingDebugger: (enabled: boolean) => Promise<void>
   executeDbCommand: (payload: any) => Promise<any>
+  onDbChunk: (callback: (data: any) => void) => () => void
 }
 
 function createListener(channel: string, callback: (...args: any[]) => void): () => void {
@@ -49,6 +50,7 @@ const api: DevInspectorAPI = {
   loadSession: (sessionId: string) => ipcRenderer.invoke('load-session', sessionId),
   toggleFloatingDebugger: (enabled: boolean) => ipcRenderer.invoke('toggle-floating-debugger', enabled),
   executeDbCommand: (payload: any) => ipcRenderer.invoke('execute-db-command', payload),
+  onDbChunk: (cb) => createListener('db-chunk', cb),
 }
 
 contextBridge.exposeInMainWorld('devInspector', api)
