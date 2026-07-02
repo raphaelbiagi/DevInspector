@@ -1,6 +1,6 @@
 {
   "name": "devinspector-desktop",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "DevInspector — External DevTools for React Native / Expo",
   "main": "./out/main/index.js",
   "scripts": {

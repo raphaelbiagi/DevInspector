@@ -269,7 +269,7 @@ export class DevToolsServer extends EventEmitter {
         return reject(new Error('Nenhum dispositivo conectado'))
       }
       
-      const timer = setTimeout(() => reject(new Error('Timeout aguardando resposta do banco de dados no dispositivo')), 15000)
+      const timer = setTimeout(() => reject(new Error('Timeout aguardando resposta do banco de dados no dispositivo')), 30000)
 
       this.connectedClient.emit('server:db:execute', payload, (response: any) => {
         clearTimeout(timer)

@@ -191,10 +191,16 @@ export const useDatabaseStore = create<DatabaseState>((set, get) => ({
         }
       })
 
+      // Evitar congelamento de UI em queries SELECT sem limite
+      let finalQuery = query.trim()
+      if (finalQuery.toUpperCase().startsWith('SELECT') && !/LIMIT\s+\d+/i.test(finalQuery)) {
+        finalQuery = `${finalQuery} LIMIT 500`
+      }
+
       const result = await window.devInspector.executeDbCommand({
         action: 'executeSql',
         dbName: selectedDb,
-        query
+        query: finalQuery
       })
       unsubChunk()
 
