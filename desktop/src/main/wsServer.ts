@@ -72,7 +72,7 @@ export class DevToolsServer extends EventEmitter {
               let score = 0
 
               // Penalidades (Ignorar interfaces virtuais e hotspots)
-              if (lowerName.includes('virtual') || lowerName.includes('vmware') || lowerName.includes('wsl') || lowerName.includes('vethernet') || lowerName.includes('pseudo') || lowerName.includes('tailscale')) {
+              if (lowerName.indexOf('virtual') !== -1 || lowerName.indexOf('vmware') !== -1 || lowerName.indexOf('wsl') !== -1 || lowerName.indexOf('vethernet') !== -1 || lowerName.indexOf('pseudo') !== -1 || lowerName.indexOf('tailscale') !== -1) {
                 score -= 100
               }
               if (net.address === '192.168.137.1') {
@@ -80,10 +80,10 @@ export class DevToolsServer extends EventEmitter {
               }
 
               // Bônus (Priorizar redes locais reais)
-              if (lowerName.includes('wi-fi') || lowerName.includes('wifi') || lowerName.includes('wlan')) {
+              if (lowerName.indexOf('wi-fi') !== -1 || lowerName.indexOf('wifi') !== -1 || lowerName.indexOf('wlan') !== -1) {
                 score += 50
               }
-              if (lowerName.includes('ethernet') || lowerName === 'en0' || lowerName === 'eth0') {
+              if (lowerName.indexOf('ethernet') !== -1 || lowerName === 'en0' || lowerName === 'eth0') {
                 score += 40
               }
               if (net.address.startsWith('192.168.') || net.address.startsWith('10.') || net.address.startsWith('172.')) {
@@ -107,7 +107,7 @@ export class DevToolsServer extends EventEmitter {
       // ====================================================
       // Novo canal unificado: devinspector:event
       // ====================================================
-      socket.on('devinspector:event', (event: DevInspectorEvent) => {
+      socket.on('devinspector:event', (event: DevInspectorEvent, ack?: () => void) => {
         // Persiste o evento
         this.sessionStore.appendEvent(event)
 
@@ -179,6 +179,11 @@ export class DevToolsServer extends EventEmitter {
               stackTrace: event.payload.stackTrace ?? null
             })
             break
+        }
+
+        // Envia confirmação de recebimento (ACK) se solicitado pelo cliente
+        if (typeof ack === 'function') {
+          ack()
         }
       })
 
