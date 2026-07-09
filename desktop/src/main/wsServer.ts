@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events'
-import { Server as SocketIOServer, Socket } from 'socket.io'
+import { WebSocketServer, WebSocket } from 'ws'
 import { createServer, Server as HttpServer } from 'http'
 import type { DevInspectorEvent, HttpRequestPayload } from './protocol'
 import { AnomalyDetector } from './anomaly-detector'
@@ -14,10 +14,11 @@ export interface ClientInfo {
 }
 
 export class DevToolsServer extends EventEmitter {
-  private io: SocketIOServer | null = null
+  private io: WebSocketServer | null = null
   private httpServer: HttpServer | null = null
   private port: number
-  private connectedClient: Socket | null = null
+  private connectedClient: WebSocket | null = null
+  private pingIntervalId: ReturnType<typeof setInterval> | null = null
 
   // Novos serviços integrados
   private anomalyDetector: AnomalyDetector
@@ -26,6 +27,7 @@ export class DevToolsServer extends EventEmitter {
 
   // Mapa temporário de requests pendentes (aguardando response)
   private pendingRequests = new Map<string, HttpRequestPayload>()
+  private pendingDbCommands = new Map<string, (response: any) => void>()
 
   constructor(port: number) {
     super()
@@ -42,21 +44,51 @@ export class DevToolsServer extends EventEmitter {
   }
 
   start(): void {
-    this.httpServer = createServer()
-
-    this.io = new SocketIOServer(this.httpServer, {
-      cors: {
-        origin: '*',
-        methods: ['GET', 'POST']
-      },
-      maxHttpBufferSize: 50 * 1024 * 1024, // 50MB max message (Aumentado para suportar requisições enormes)
-      pingTimeout: 60000, // 60s (Tolerar bloqueio da main thread durante o salvamento em lote)
-      pingInterval: 25000 // 25s (Acompanhando o pingTimeout)
+    this.httpServer = createServer((req, res) => {
+      if (req.url === '/ping') {
+        res.writeHead(200, {
+          'Access-Control-Allow-Origin': '*',
+          'Content-Type': 'text/plain'
+        })
+        res.end('pong')
+      } else {
+        res.writeHead(404)
+        res.end()
+      }
     })
 
-    this.io.on('connection', (socket: Socket) => {
-      console.log(`[DevInspector] Client connected: ${socket.id}`)
-      this.connectedClient = socket
+    this.io = new WebSocketServer({
+      server: this.httpServer,
+      maxPayload: 50 * 1024 * 1024, // 50MB max message
+    })
+
+    this.pingIntervalId = setInterval(() => {
+      this.io?.clients.forEach((ws) => {
+        if ((ws as any).isAlive === false) return ws.terminate()
+        ;(ws as any).isAlive = false
+        ws.ping() // Isso é processado pelas threads Nativas no celular!
+      })
+    }, 30000)
+
+    this.io.on('close', () => {
+      if (this.pingIntervalId) clearInterval(this.pingIntervalId)
+    })
+
+    this.io.on('connection', (ws: WebSocket) => {
+      const clientId = crypto.randomUUID()
+      ;(ws as any).isAlive = true
+      console.log(`[DevInspector] Client connected: ${clientId}`)
+      this.connectedClient = ws
+
+      ws.on('pong', () => {
+        ;(ws as any).isAlive = true
+      })
+
+      const sendToClient = (event: string, payload?: any, ackId?: string) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ event, payload, ackId }))
+        }
+      }
 
       // MÁGICA: Pega o IPv4 real da máquina na rede Wi-Fi e envia para o celular!
       const { networkInterfaces } = require('os')
@@ -66,185 +98,151 @@ export class DevToolsServer extends EventEmitter {
 
         for (const name of Object.keys(nets)) {
           const lowerName = name.toLowerCase()
-
           for (const net of nets[name] || []) {
             if (net.family === 'IPv4' && !net.internal) {
               let score = 0
-
-              // Penalidades (Ignorar interfaces virtuais e hotspots)
               if (lowerName.indexOf('virtual') !== -1 || lowerName.indexOf('vmware') !== -1 || lowerName.indexOf('wsl') !== -1 || lowerName.indexOf('vethernet') !== -1 || lowerName.indexOf('pseudo') !== -1 || lowerName.indexOf('tailscale') !== -1) {
                 score -= 100
               }
-              if (net.address === '192.168.137.1') {
-                 score -= 50 // IP padrão do Windows Mobile Hotspot / ICS
-              }
-
-              // Bônus (Priorizar redes locais reais)
-              if (lowerName.indexOf('wi-fi') !== -1 || lowerName.indexOf('wifi') !== -1 || lowerName.indexOf('wlan') !== -1) {
-                score += 50
-              }
-              if (lowerName.indexOf('ethernet') !== -1 || lowerName === 'en0' || lowerName === 'eth0') {
-                score += 40
-              }
-              if (net.address.startsWith('192.168.') || net.address.startsWith('10.') || net.address.startsWith('172.')) {
-                score += 10
-              }
-
+              if (net.address === '192.168.137.1') score -= 50
+              if (lowerName.indexOf('wi-fi') !== -1 || lowerName.indexOf('wifi') !== -1 || lowerName.indexOf('wlan') !== -1) score += 50
+              if (lowerName.indexOf('ethernet') !== -1 || lowerName === 'en0' || lowerName === 'eth0') score += 40
+              if (net.address.startsWith('192.168.') || net.address.startsWith('10.') || net.address.startsWith('172.')) score += 10
               candidates.push({ address: net.address, score })
             }
           }
         }
-
-        // Ordena do maior score pro menor e pega o melhor
         candidates.sort((a, b) => b.score - a.score)
         return candidates.length > 0 ? candidates[0].address : null
       }
-      socket.emit('server:ipv4', getLocalIPv4())
+      
+      sendToClient('server:ipv4', getLocalIPv4())
 
       const sessionId = crypto.randomUUID()
       this.sessionStore.startSession(sessionId)
 
-      // ====================================================
-      // Novo canal unificado: devinspector:event
-      // ====================================================
-      socket.on('devinspector:event', (event: DevInspectorEvent, ack?: () => void) => {
-        // Persiste o evento
-        this.sessionStore.appendEvent(event)
+      ws.on('message', (dataRaw) => {
+        try {
+          const parsed = JSON.parse(dataRaw.toString())
+          const { event, payload, ackId } = parsed
 
-        // Encaminha para o renderer
-        this.emit('devinspector:event', event)
+          if (event === 'devinspector:event') {
+            const inspectorEvent = payload as DevInspectorEvent
+            this.sessionStore.appendEvent(inspectorEvent)
+            this.emit('devinspector:event', inspectorEvent)
 
-        // Processamento específico por tipo
-        switch (event.type) {
-          case 'session:handshake':
-            this.sessionStore.setDeviceInfo(event.payload as unknown as Record<string, unknown>)
-            {
-              const info: ClientInfo = {
-                id: socket.id,
-                platform: event.payload.platform || 'unknown',
-                appName: event.payload.appName || 'React Native App',
-                connectedAt: Date.now()
+            switch (inspectorEvent.type) {
+              case 'session:handshake':
+                this.sessionStore.setDeviceInfo(inspectorEvent.payload as unknown as Record<string, unknown>)
+                this.emit('client-connected', {
+                  id: clientId,
+                  platform: inspectorEvent.payload.platform || 'unknown',
+                  appName: inspectorEvent.payload.appName || 'React Native App',
+                  connectedAt: Date.now()
+                })
+                break
+
+              case 'http:request':
+                this.pendingRequests.set(inspectorEvent.payload.id, inspectorEvent.payload)
+                this.emit('network:request-start', {
+                  id: inspectorEvent.payload.id,
+                  method: inspectorEvent.payload.method,
+                  url: inspectorEvent.payload.url,
+                  requestHeaders: inspectorEvent.payload.headers,
+                  requestBody: inspectorEvent.payload.body,
+                  startTime: inspectorEvent.payload.timestamp,
+                  source: 'fetch'
+                })
+                break
+
+              case 'http:response': {
+                const request = this.pendingRequests.get(inspectorEvent.payload.requestId)
+                if (request) {
+                  this.pendingRequests.delete(inspectorEvent.payload.requestId)
+                  this.anomalyDetector.analyzeResponse(request, inspectorEvent.payload)
+                  const diff = this.requestDiffer.record(request, inspectorEvent.payload)
+                  if (diff) this.emit('devinspector:diff', diff)
+                }
+                this.emit('network:request-end', {
+                  id: inspectorEvent.payload.requestId,
+                  statusCode: inspectorEvent.payload.statusCode,
+                  responseHeaders: inspectorEvent.payload.headers,
+                  responseBody: inspectorEvent.payload.body,
+                  responseSize: inspectorEvent.payload.size ?? null,
+                  endTime: inspectorEvent.payload.timestamp,
+                  duration: inspectorEvent.payload.duration
+                })
+                break
               }
-              this.emit('client-connected', info)
-            }
-            break
 
-          case 'http:request':
-            this.pendingRequests.set(event.payload.id, event.payload)
-            // Compatibilidade: emite evento legado
-            this.emit('network:request-start', {
-              id: event.payload.id,
-              method: event.payload.method,
-              url: event.payload.url,
-              requestHeaders: event.payload.headers,
-              requestBody: event.payload.body,
-              startTime: event.payload.timestamp,
-              source: 'fetch'
-            })
-            break
-
-          case 'http:response': {
-            const request = this.pendingRequests.get(event.payload.requestId)
-            if (request) {
-              this.pendingRequests.delete(event.payload.requestId)
-              this.anomalyDetector.analyzeResponse(request, event.payload)
-              const diff = this.requestDiffer.record(request, event.payload)
-              if (diff) {
-                this.emit('devinspector:diff', diff)
-              }
+              case 'console:entry':
+                this.anomalyDetector.analyzeConsole(inspectorEvent.payload)
+                this.emit('console:log', {
+                  id: inspectorEvent.payload.id,
+                  level: inspectorEvent.payload.level,
+                  args: Array.isArray(inspectorEvent.payload.args) ? inspectorEvent.payload.args : [],
+                  timestamp: inspectorEvent.payload.timestamp,
+                  stackTrace: inspectorEvent.payload.stackTrace ?? null
+                })
+                break
             }
-            // Compatibilidade: emite evento legado
-            this.emit('network:request-end', {
-              id: event.payload.requestId,
-              statusCode: event.payload.statusCode,
-              responseHeaders: event.payload.headers,
-              responseBody: event.payload.body,
-              responseSize: event.payload.size ?? null,
-              endTime: event.payload.timestamp,
-              duration: event.payload.duration
+
+            if (ackId) {
+              sendToClient('ack', null, ackId)
+            }
+          } else if (event === 'client:info') {
+            this.emit('client-connected', {
+              id: clientId,
+              platform: payload.platform || 'unknown',
+              appName: payload.appName || 'React Native App',
+              connectedAt: Date.now()
             })
-            break
+          } else if (event === 'network:request-start') {
+            this.emit('network:request-start', payload)
+          } else if (event === 'network:request-end') {
+            this.emit('network:request-end', payload)
+          } else if (event === 'network:request-error') {
+            this.emit('network:request-error', payload)
+          } else if (event === 'console:log') {
+            this.emit('console:log', payload)
+          } else if (event === 'server:db:response') {
+             if (ackId) {
+               const callback = this.pendingDbCommands.get(ackId)
+               if (callback) callback(payload)
+             }
           }
 
-          case 'console:entry':
-            this.anomalyDetector.analyzeConsole(event.payload)
-            // Compatibilidade: emite evento legado
-            this.emit('console:log', {
-              id: event.payload.id,
-              level: event.payload.level,
-              args: Array.isArray(event.payload.args)
-                ? event.payload.args
-                : [],
-              timestamp: event.payload.timestamp,
-              stackTrace: event.payload.stackTrace ?? null
-            })
-            break
-        }
-
-        // Envia confirmação de recebimento (ACK) se solicitado pelo cliente
-        if (typeof ack === 'function') {
-          ack()
+        } catch (err) {
+          console.error('[DevInspector] Invalid message received', err)
         }
       })
 
-      // ====================================================
-      // Canais legados (compatibilidade com SDK atual)
-      // ====================================================
-      socket.on('client:info', (data: Omit<ClientInfo, 'id' | 'connectedAt'>) => {
-        const info: ClientInfo = {
-          id: socket.id,
-          platform: data.platform || 'unknown',
-          appName: data.appName || 'React Native App',
-          connectedAt: Date.now()
-        }
-        this.emit('client-connected', info)
-      })
-
-      socket.on('network:request-start', (data: unknown) => {
-        this.emit('network:request-start', data)
-      })
-
-      socket.on('network:request-end', (data: unknown) => {
-        this.emit('network:request-end', data)
-      })
-
-      socket.on('network:request-error', (data: unknown) => {
-        this.emit('network:request-error', data)
-      })
-
-      socket.on('console:log', (data: unknown) => {
-        this.emit('console:log', data)
-      })
-
-      socket.on('disconnect', (reason: string) => {
+      const handleDisconnect = (reason: string) => {
         console.log(`[DevInspector] Client disconnected: ${reason}`)
-        if (this.connectedClient?.id === socket.id) {
+        if (this.connectedClient === ws) {
           this.connectedClient = null
         }
         this.sessionStore.endSession()
         this.pendingRequests.clear()
         this.emit('client-disconnected')
-      })
+      }
+
+      ws.on('close', () => handleDisconnect('socket closed'))
+      ws.on('error', (err) => handleDisconnect(`socket error: ${err.message}`))
     })
 
     this.httpServer.listen(this.port, '0.0.0.0', () => {
-      console.log(`[DevInspector] Server listening on 0.0.0.0:${this.port}`)
+      console.log(`[DevInspector] Server listening on 0.0.0.0:${this.port} (Native WebSockets)`)
       
-      // MÁGICA DE AUTOMAÇÃO USB (ADB REVERSE)
-      // Garante que qualquer celular Android conectado via USB tenha a porta mapeada automaticamente
       const { exec } = require('child_process')
       const setupAdbTunnel = () => {
-        // Tenta rodar o comando adb globalmente
         exec(`adb reverse tcp:${this.port} tcp:${this.port}`, (err: any) => {
           if (err) {
-            // Fallback para Windows (caminho padrão do Android SDK)
             if (process.platform === 'win32') {
               const localAppData = process.env.LOCALAPPDATA
               if (localAppData) {
                 const adbPath = `${localAppData}\\Android\\Sdk\\platform-tools\\adb.exe`
-                exec(`"${adbPath}" reverse tcp:${this.port} tcp:${this.port}`, (fallbackErr: any) => {
-                  // Silencioso
-                })
+                exec(`"${adbPath}" reverse tcp:${this.port} tcp:${this.port}`, () => {})
               }
             } else if (process.platform === 'darwin') {
               const macPath = `${process.env.HOME}/Library/Android/sdk/platform-tools/adb`
@@ -254,14 +252,19 @@ export class DevToolsServer extends EventEmitter {
         })
       }
       
-      // Roda imediatamente e depois a cada 10 segundos
       setupAdbTunnel()
       setInterval(setupAdbTunnel, 10000)
     })
   }
 
   broadcastToClients(event: string, data: unknown): void {
-    this.io?.emit(event, data)
+    if (!this.io) return
+    const msg = JSON.stringify({ event, payload: data })
+    this.io.clients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(msg)
+      }
+    })
   }
 
   getSessionStore(): SessionStore {
@@ -270,24 +273,32 @@ export class DevToolsServer extends EventEmitter {
 
   async executeDbCommand(payload: any): Promise<any> {
     return new Promise((resolve, reject) => {
-      if (!this.connectedClient) {
+      if (!this.connectedClient || this.connectedClient.readyState !== WebSocket.OPEN) {
         return reject(new Error('Nenhum dispositivo conectado'))
       }
       
-      const timer = setTimeout(() => reject(new Error('Timeout aguardando resposta do banco de dados no dispositivo')), 30000)
+      const ackId = crypto.randomUUID()
+      const timer = setTimeout(() => {
+        this.pendingDbCommands.delete(ackId)
+        reject(new Error('Timeout aguardando resposta do banco de dados no dispositivo'))
+      }, 30000)
 
-      this.connectedClient.emit('server:db:execute', payload, (response: any) => {
+      this.pendingDbCommands.set(ackId, (response: any) => {
         clearTimeout(timer)
+        this.pendingDbCommands.delete(ackId)
         if (response && response.success) {
           resolve(response.data)
         } else {
           reject(new Error(response?.error || 'Erro desconhecido ao executar comando de banco de dados'))
         }
       })
+
+      this.connectedClient.send(JSON.stringify({ event: 'server:db:execute', payload, ackId }))
     })
   }
 
   stop(): void {
+    if (this.pingIntervalId) clearInterval(this.pingIntervalId)
     this.io?.close()
     this.httpServer?.close()
     this.io = null

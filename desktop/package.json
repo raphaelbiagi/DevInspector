@@ -1,6 +1,6 @@
 {
   "name": "devinspector-desktop",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "DevInspector — External DevTools for React Native / Expo",
   "main": "./out/main/index.js",
   "scripts": {
@@ -20,11 +20,13 @@
     "react-simple-code-editor": "^0.14.1",
     "socket.io": "^4.8.0",
     "socket.io-client": "^4.8.3",
+    "ws": "^8.21.0",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.4.0",
     "electron": "^35.0.0",
     "electron-builder": "^25.1.8",
