@@ -51,6 +51,26 @@ export class DevToolsServer extends EventEmitter {
           'Content-Type': 'text/plain'
         })
         res.end('pong')
+      } else if (req.url === '/upload-payload' && req.method === 'POST') {
+        let body = ''
+        req.on('data', chunk => {
+          body += chunk.toString()
+        })
+        req.on('end', () => {
+          try {
+            const parsed = JSON.parse(body)
+            this.handleClientEvent(parsed, 'http-bypass', () => {})
+            res.writeHead(200, {
+              'Access-Control-Allow-Origin': '*',
+              'Content-Type': 'application/json'
+            })
+            res.end(JSON.stringify({ success: true }))
+          } catch (e) {
+            console.error('[DevInspector] Erro ao parsear payload gigante do POST', e)
+            res.writeHead(400)
+            res.end('Bad Request')
+          }
+        })
       } else {
         res.writeHead(404)
         res.end()
@@ -124,94 +144,9 @@ export class DevToolsServer extends EventEmitter {
       ws.on('message', (dataRaw) => {
         try {
           const parsed = JSON.parse(dataRaw.toString())
-          const { event, payload, ackId } = parsed
-
-          if (event === 'devinspector:event') {
-            const inspectorEvent = payload as DevInspectorEvent
-            this.sessionStore.appendEvent(inspectorEvent)
-            this.emit('devinspector:event', inspectorEvent)
-
-            switch (inspectorEvent.type) {
-              case 'session:handshake':
-                this.sessionStore.setDeviceInfo(inspectorEvent.payload as unknown as Record<string, unknown>)
-                this.emit('client-connected', {
-                  id: clientId,
-                  platform: inspectorEvent.payload.platform || 'unknown',
-                  appName: inspectorEvent.payload.appName || 'React Native App',
-                  connectedAt: Date.now()
-                })
-                break
-
-              case 'http:request':
-                this.pendingRequests.set(inspectorEvent.payload.id, inspectorEvent.payload)
-                this.emit('network:request-start', {
-                  id: inspectorEvent.payload.id,
-                  method: inspectorEvent.payload.method,
-                  url: inspectorEvent.payload.url,
-                  requestHeaders: inspectorEvent.payload.headers,
-                  requestBody: inspectorEvent.payload.body,
-                  startTime: inspectorEvent.payload.timestamp,
-                  source: 'fetch'
-                })
-                break
-
-              case 'http:response': {
-                const request = this.pendingRequests.get(inspectorEvent.payload.requestId)
-                if (request) {
-                  this.pendingRequests.delete(inspectorEvent.payload.requestId)
-                  this.anomalyDetector.analyzeResponse(request, inspectorEvent.payload)
-                  const diff = this.requestDiffer.record(request, inspectorEvent.payload)
-                  if (diff) this.emit('devinspector:diff', diff)
-                }
-                this.emit('network:request-end', {
-                  id: inspectorEvent.payload.requestId,
-                  statusCode: inspectorEvent.payload.statusCode,
-                  responseHeaders: inspectorEvent.payload.headers,
-                  responseBody: inspectorEvent.payload.body,
-                  responseSize: inspectorEvent.payload.size ?? null,
-                  endTime: inspectorEvent.payload.timestamp,
-                  duration: inspectorEvent.payload.duration
-                })
-                break
-              }
-
-              case 'console:entry':
-                this.anomalyDetector.analyzeConsole(inspectorEvent.payload)
-                this.emit('console:log', {
-                  id: inspectorEvent.payload.id,
-                  level: inspectorEvent.payload.level,
-                  args: Array.isArray(inspectorEvent.payload.args) ? inspectorEvent.payload.args : [],
-                  timestamp: inspectorEvent.payload.timestamp,
-                  stackTrace: inspectorEvent.payload.stackTrace ?? null
-                })
-                break
-            }
-
-            if (ackId) {
-              sendToClient('ack', null, ackId)
-            }
-          } else if (event === 'client:info') {
-            this.emit('client-connected', {
-              id: clientId,
-              platform: payload.platform || 'unknown',
-              appName: payload.appName || 'React Native App',
-              connectedAt: Date.now()
-            })
-          } else if (event === 'network:request-start') {
-            this.emit('network:request-start', payload)
-          } else if (event === 'network:request-end') {
-            this.emit('network:request-end', payload)
-          } else if (event === 'network:request-error') {
-            this.emit('network:request-error', payload)
-          } else if (event === 'console:log') {
-            this.emit('console:log', payload)
-          } else if (event === 'server:db:response') {
-             if (ackId) {
-               const callback = this.pendingDbCommands.get(ackId)
-               if (callback) callback(payload)
-             }
-          }
-
+          this.handleClientEvent(parsed, clientId, (ackId) => {
+            if (ackId) sendToClient('ack', null, ackId)
+          })
         } catch (err) {
           console.error('[DevInspector] Invalid message received', err)
         }
@@ -255,6 +190,96 @@ export class DevToolsServer extends EventEmitter {
       setupAdbTunnel()
       setInterval(setupAdbTunnel, 10000)
     })
+  }
+
+  private handleClientEvent(parsed: any, clientId: string, ackCallback: (ackId?: string) => void): void {
+    const { event, payload, ackId } = parsed
+
+    if (event === 'devinspector:event') {
+      const inspectorEvent = payload as DevInspectorEvent
+      this.sessionStore.appendEvent(inspectorEvent)
+      this.emit('devinspector:event', inspectorEvent)
+
+      switch (inspectorEvent.type) {
+        case 'session:handshake':
+          this.sessionStore.setDeviceInfo(inspectorEvent.payload as unknown as Record<string, unknown>)
+          this.emit('client-connected', {
+            id: clientId,
+            platform: inspectorEvent.payload.platform || 'unknown',
+            appName: inspectorEvent.payload.appName || 'React Native App',
+            connectedAt: Date.now()
+          })
+          break
+
+        case 'http:request':
+          this.pendingRequests.set(inspectorEvent.payload.id, inspectorEvent.payload)
+          this.emit('network:request-start', {
+            id: inspectorEvent.payload.id,
+            method: inspectorEvent.payload.method,
+            url: inspectorEvent.payload.url,
+            requestHeaders: inspectorEvent.payload.headers,
+            requestBody: inspectorEvent.payload.body,
+            startTime: inspectorEvent.payload.timestamp,
+            source: 'fetch'
+          })
+          break
+
+        case 'http:response': {
+          const request = this.pendingRequests.get(inspectorEvent.payload.requestId)
+          if (request) {
+            this.pendingRequests.delete(inspectorEvent.payload.requestId)
+            this.anomalyDetector.analyzeResponse(request, inspectorEvent.payload)
+            const diff = this.requestDiffer.record(request, inspectorEvent.payload)
+            if (diff) this.emit('devinspector:diff', diff)
+          }
+          this.emit('network:request-end', {
+            id: inspectorEvent.payload.requestId,
+            statusCode: inspectorEvent.payload.statusCode,
+            responseHeaders: inspectorEvent.payload.headers,
+            responseBody: inspectorEvent.payload.body,
+            responseSize: inspectorEvent.payload.size ?? null,
+            endTime: inspectorEvent.payload.timestamp,
+            duration: inspectorEvent.payload.duration
+          })
+          break
+        }
+
+        case 'console:entry':
+          this.anomalyDetector.analyzeConsole(inspectorEvent.payload)
+          this.emit('console:log', {
+            id: inspectorEvent.payload.id,
+            level: inspectorEvent.payload.level,
+            args: Array.isArray(inspectorEvent.payload.args) ? inspectorEvent.payload.args : [],
+            timestamp: inspectorEvent.payload.timestamp,
+            stackTrace: inspectorEvent.payload.stackTrace ?? null
+          })
+          break
+      }
+
+      if (ackId) {
+        ackCallback(ackId)
+      }
+    } else if (event === 'client:info') {
+      this.emit('client-connected', {
+        id: clientId,
+        platform: payload.platform || 'unknown',
+        appName: payload.appName || 'React Native App',
+        connectedAt: Date.now()
+      })
+    } else if (event === 'network:request-start') {
+      this.emit('network:request-start', payload)
+    } else if (event === 'network:request-end') {
+      this.emit('network:request-end', payload)
+    } else if (event === 'network:request-error') {
+      this.emit('network:request-error', payload)
+    } else if (event === 'console:log') {
+      this.emit('console:log', payload)
+    } else if (event === 'server:db:response') {
+       if (ackId) {
+         const callback = this.pendingDbCommands.get(ackId)
+         if (callback) callback(payload)
+       }
+    }
   }
 
   broadcastToClients(event: string, data: unknown): void {
