@@ -12,6 +12,15 @@ interface RequestDetailProps {
 
 export const RequestDetail: React.FC<RequestDetailProps> = ({ request, onClose }) => {
   const [activeTab, setActiveTab] = useState('headers')
+  const [loadingContent, setLoadingContent] = useState(false)
+
+  React.useEffect(() => {
+    setLoadingContent(true)
+    const timer = setTimeout(() => {
+      setLoadingContent(false)
+    }, 10)
+    return () => clearTimeout(timer)
+  }, [request.id, activeTab])
 
   const renderHeaders = (headers: Record<string, string>) => {
     if (!headers || Object.keys(headers).length === 0) {
@@ -135,7 +144,13 @@ export const RequestDetail: React.FC<RequestDetailProps> = ({ request, onClose }
         {activeTab === 'request' && (
           <>
             <div className="detail-section-title">Request Payload</div>
-            {renderBody(request.requestBody)}
+            {loadingContent ? (
+              <div style={{ padding: 16, textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                Carregando dados...
+              </div>
+            ) : (
+              renderBody(request.requestBody)
+            )}
           </>
         )}
 
@@ -148,6 +163,10 @@ export const RequestDetail: React.FC<RequestDetailProps> = ({ request, onClose }
               </div>
             ) : request.status === 'pending' ? (
               <div style={{ color: 'var(--color-text-muted)', fontStyle: 'italic' }}>Waiting for response...</div>
+            ) : loadingContent ? (
+              <div style={{ padding: 16, textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                Carregando dados...
+              </div>
             ) : (
               renderBody(request.responseBody)
             )}
