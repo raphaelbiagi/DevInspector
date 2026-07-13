@@ -1,5 +1,6 @@
 import { initTransport, getTransport, hasTransport, DevInspectorTransport } from './transport'
 import { discoverDesktop, getFallbackHost } from './discovery'
+import { AppState, type AppStateStatus } from 'react-native'
 import type { ClientMessage, ConnectionStatus, DevInspectorEvent, DatabaseDriver, DbCommandPayload } from './types'
 
 const DEFAULT_PORT = 8347
@@ -23,9 +24,13 @@ export class DevToolsClient {
   private isVisible = false
   private visibilityListeners: Array<(visible: boolean) => void> = []
   private notifyTimeout: ReturnType<typeof setTimeout> | null = null
+  private appStateSubscription: any = null
 
   // Driver de Banco de Dados
   private dbDriver: DatabaseDriver | null = null
+
+  // Filtro de requisições internas
+  private ignoredRequestIds = new Set<string>()
 
   constructor() {}
 
@@ -107,23 +112,97 @@ export class DevToolsClient {
 
     console.log(`[DevInspector] Disparando socket.connect() para ${targetHost}`)
     this.transport.connect(targetHost, port)
+
+    // Escutar AppState para pausar/retomar a fila e gerenciar conexão
+    this.appStateSubscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'active') {
+        console.log('[DevInspector] App em foreground. Retomando processamento de eventos.')
+        this.transport?.setPaused(false)
+        if (this.transport && !this.transport.isConnected() && targetHost) {
+          const hostToUse = this.transport.getCurrentHost() || targetHost
+          console.log(`[DevInspector] Tentando reconectar ao ${hostToUse} após voltar do background...`)
+          this.transport.connect(hostToUse, port)
+        }
+      } else if (nextAppState === 'background') {
+        console.log('[DevInspector] App em background. Pausando envio para poupar recursos e evitar timeouts.')
+        this.transport?.setPaused(true)
+      }
+    })
   }
 
   send(message: ClientMessage): void {
     if (!this.isInitialized) return
     
-    const converted = this.convertToEvent(message)
-    if (!converted) return
+    // Filtro para não poluir o histórico com requisições internas da própria ferramenta
+    if (message.type.startsWith('network:request')) {
+      const payload = message.payload as any
+      const id = payload.id
+      
+      if (message.type === 'network:request-start') {
+        const url = payload.url || ''
+        if (url.includes(':8347/ping') || url.includes(':8347/socket.io') || url.includes('/upload-payload')) {
+          this.ignoredRequestIds.add(id)
+          return
+        }
+      } else {
+        // network:request-end ou network:request-error
+        if (this.ignoredRequestIds.has(id)) {
+          this.ignoredRequestIds.delete(id)
+          return
+        }
+      }
+    }
 
-    // Salva no histórico local para a UI flutuante usando o EVENTO CONVERTIDO
-    this.history.unshift(converted)
+    // 1. Gera versão sem truncamento para testarmos se precisa do Bypass HTTP
+    const fullConverted = this.convertToEvent(message, true)
+    if (!fullConverted) return
+
+    let finalStr = ''
+    try {
+      // É crucial embrulhar no mesmo formato que o WebSocket espera!
+      finalStr = JSON.stringify({
+        event: 'devinspector:event',
+        payload: fullConverted
+      })
+    } catch (e) {
+      console.warn('[DevInspector] Falha ao stringificar evento', e)
+    }
+
+    // Se o evento completo tem mais de 1.5MB, usamos o Bypass Nativo via HTTP POST!
+    if (finalStr.length > 1500000 && this.transport) {
+      const host = this.transport.getCurrentHost()
+      const port = this.transport.getCurrentPort()
+
+      if (host) {
+        // Envia na íntegra por fora do WebSocket
+        fetch(`http://${host}:${port}/upload-payload`, {
+          method: 'POST',
+          body: finalStr
+        }).catch(err => {
+          console.warn('[DevInspector] Falha no Bypass HTTP POST:', err)
+        })
+
+        // Pro histórico local da Bolha (In-App), temos que truncar pra não acabar com a RAM
+        const truncatedConverted = this.convertToEvent(message, false)
+        if (truncatedConverted) {
+          this.history.unshift(truncatedConverted)
+          if (this.history.length > 100) this.history.pop()
+          this.notifyHistoryListeners()
+        }
+        
+        return // Encerra (Não enfileira no WebSocket)
+      }
+    }
+
+    // Fluxo normal via WebSocket (Payload pequeno)
+    this.history.unshift(fullConverted)
     if (this.history.length > 100) {
       this.history.pop() // Limita a 100 eventos para não pesar a RAM
     }
     this.notifyHistoryListeners()
 
     if (this.transport && this.transport.isConnected()) {
-      this.transport.send(converted)
+      this.transport.send(fullConverted)
     }
   }
 
@@ -137,6 +216,10 @@ export class DevToolsClient {
     this.transport?.disconnect()
     this.transport = null
     this.isInitialized = false
+    if (this.appStateSubscription) {
+      this.appStateSubscription.remove()
+      this.appStateSubscription = null
+    }
   }
 
   destroy(): void {
@@ -147,6 +230,10 @@ export class DevToolsClient {
     this.isInitialized = false
     this.history = []
     this.historyListeners = []
+    if (this.appStateSubscription) {
+      this.appStateSubscription.remove()
+      this.appStateSubscription = null
+    }
   }
 
   // --- Métodos de Banco de Dados ---
@@ -167,7 +254,12 @@ export class DevToolsClient {
         return await this.dbDriver.getTables(payload.dbName)
       case 'executeSql':
         if (!payload.dbName || !payload.query) throw new Error('dbName and query are required')
-        return await this.dbDriver.executeSql(payload.dbName, payload.query, payload.args)
+        return await this.dbDriver.executeSql(payload.dbName, payload.query, payload.args, (chunk) => {
+          this.sendEvent({
+            type: 'db:chunk',
+            payload: { chunk }
+          })
+        })
       default:
         throw new Error(`Ação DB desconhecida: ${payload.action}`)
     }
@@ -230,7 +322,89 @@ export class DevToolsClient {
     return this.transport
   }
 
-  private convertToEvent(message: ClientMessage): DevInspectorEvent | null {
+  private truncateDeep(data: any, maxDepth: number = 4, currentDepth: number = 0): any {
+    if (data === null || data === undefined) return data;
+    
+    if (typeof data === 'string') {
+      if (data.length > 5000) {
+        return data.substring(0, 5000) + `... [DevInspector: texto truncado]`
+      }
+      return data;
+    }
+
+    if (currentDepth >= maxDepth) {
+      if (Array.isArray(data)) return `[Array(${data.length}) omitido]`;
+      if (typeof data === 'object') return `[Object omitido]`;
+      return data;
+    }
+
+    if (Array.isArray(data)) {
+      if (data.length > 50) {
+        const preview = data.slice(0, 50).map(item => this.truncateDeep(item, maxDepth, currentDepth + 1));
+        preview.push({ _devinspector_info: `... mais ${data.length - 50} itens omitidos.` });
+        return preview;
+      }
+      return data.map(item => this.truncateDeep(item, maxDepth, currentDepth + 1));
+    }
+
+    if (typeof data === 'object') {
+      const entries = Object.entries(data);
+      const previewObj: any = {};
+      const limit = Math.min(entries.length, 50);
+      
+      for (let i = 0; i < limit; i++) {
+        previewObj[entries[i][0]] = this.truncateDeep(entries[i][1], maxDepth, currentDepth + 1);
+      }
+      
+      if (entries.length > 50) {
+        previewObj['_devinspector_info'] = `... mais ${entries.length - 50} chaves omitidas.`;
+      }
+      return previewObj;
+    }
+
+    return data;
+  }
+
+  // Helper para proteger o Histórico de payloads gigantescos
+  private safeStringify(data: any, skipTruncation: boolean): string {
+    if (data === null || data === undefined) return ''
+    
+    let parsedData = data;
+
+    if (typeof data === 'string') {
+      try {
+        parsedData = JSON.parse(data)
+      } catch (e) {
+        if (!skipTruncation && data.length > 1500000) {
+          return data.substring(0, 5000) + `\n\n... [DevInspector] Restante truncado. Payload era gigantesco (${(data.length / 1024 / 1024).toFixed(2)} MB).`
+        }
+        return data 
+      }
+    }
+
+    try {
+      const stringified = JSON.stringify(parsedData)
+      if (skipTruncation || stringified.length <= 1500000) {
+        return stringified
+      }
+
+      // Caiu na malha fina! Trunca pra não explodir a RAM do celular no Histórico In-App
+      let safeData = this.truncateDeep(parsedData, 4, 0);
+      
+      const aviso = `Payload original era pesado (${(stringified.length / 1024 / 1024).toFixed(2)} MB). Foi enviado completo ao Desktop via Bypass, mas podado aqui no Histórico do celular.`
+      if (typeof safeData === 'object' && safeData !== null && !Array.isArray(safeData)) {
+         safeData['_devinspector_warning'] = aviso
+      } else if (Array.isArray(safeData)) {
+         safeData.unshift({ _devinspector_warning: aviso })
+      }
+
+      return JSON.stringify(safeData)
+    } catch (err) {
+      return `{"_devinspector_error": "Erro ao serializar payload: ${err instanceof Error ? err.message : String(err)}"}`
+    }
+  }
+
+  private convertToEvent(message: ClientMessage, skipTruncation: boolean = false): DevInspectorEvent | null {
     switch (message.type) {
       case 'client:info':
         return {
@@ -264,9 +438,7 @@ export class DevToolsClient {
             method: message.payload.method,
             url: message.payload.url,
             headers: message.payload.requestHeaders,
-            body: typeof message.payload.requestBody === 'string'
-              ? message.payload.requestBody
-              : JSON.stringify(message.payload.requestBody),
+            body: this.safeStringify(message.payload.requestBody, skipTruncation),
             timestamp: message.payload.startTime,
             sessionId: '',
           } as Record<string, unknown>,
@@ -279,9 +451,7 @@ export class DevToolsClient {
             statusCode: message.payload.statusCode,
             statusText: '',
             headers: message.payload.responseHeaders,
-            body: typeof message.payload.responseBody === 'string'
-              ? message.payload.responseBody
-              : JSON.stringify(message.payload.responseBody),
+            body: this.safeStringify(message.payload.responseBody, skipTruncation),
             duration: message.payload.duration,
             size: message.payload.responseSize,
             timestamp: message.payload.endTime,

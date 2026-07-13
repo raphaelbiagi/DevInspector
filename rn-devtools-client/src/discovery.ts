@@ -71,11 +71,6 @@ export function getFallbackHost(): string {
       console.log('[DevInspector] Regex match:', match)
       if (match && match[1]) {
         let ip = match[1]
-        // Se for localhost no Android, precisamos mapear para o emulador
-        if ((ip === 'localhost' || ip === '127.0.0.1') && Platform.OS === 'android') {
-          console.log('[DevInspector] Mapeando localhost para 10.0.2.2 no Android')
-          ip = '10.0.2.2'
-        }
         console.log('[DevInspector] IP encontrado via scriptURL:', ip)
         return ip
       }
@@ -95,10 +90,6 @@ export function getFallbackHost(): string {
       const match = hostUri.match(/^([^:/]+)/)
       if (match && match[1]) {
         let ip = match[1]
-        if ((ip === 'localhost' || ip === '127.0.0.1') && Platform.OS === 'android') {
-          console.log('[DevInspector] Mapeando localhost do Expo para 10.0.2.2 no Android')
-          ip = '10.0.2.2'
-        }
         console.log('[DevInspector] IP encontrado via Expo Constants:', ip)
         return ip
       }
@@ -108,7 +99,7 @@ export function getFallbackHost(): string {
   }
 
   console.log('[DevInspector] AVISO: Não foi possível detectar o IP. Usando fallback.')
-  return Platform.OS === 'android' ? '10.0.2.2' : 'localhost'
+  return 'localhost'
 }
 
 function getCandidateHosts(): string[] {
@@ -140,8 +131,8 @@ async function probeHost(host: string, port: number): Promise<DiscoveryResult | 
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), DISCOVERY_TIMEOUT_MS)
 
-    // Socket.IO server expõe um endpoint de polling que podemos usar para probing
-    const url = `http://${host}:${port}/socket.io/?EIO=4&transport=polling`
+    // Endpoint customizado para HTTP probing do WebSocket nativo
+    const url = `http://${host}:${port}/ping`
 
     const response = await fetch(url, {
       method: 'GET',

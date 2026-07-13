@@ -65,7 +65,7 @@ export class ExpoSqliteAdapter implements DatabaseDriver {
       .filter((name: string) => !name.startsWith('sqlite_') && !name.startsWith('android_'))
   }
 
-  async executeSql(dbName: string, query: string, args: any[] = []): Promise<any> {
+  async executeSql(dbName: string, query: string, args: any[] = [], onChunk?: (chunk: any[]) => void): Promise<any> {
     const db = await this.getConnection(dbName)
     const upperQuery = query.trim().toUpperCase()
     
@@ -73,7 +73,28 @@ export class ExpoSqliteAdapter implements DatabaseDriver {
     const isRead = upperQuery.startsWith('SELECT') || upperQuery.startsWith('PRAGMA') || upperQuery.startsWith('EXPLAIN')
 
     if (isRead) {
-      return await db.getAllAsync(query, args)
+      if (onChunk) {
+        let chunk: any[] = []
+        try {
+          for await (const row of db.getEachAsync(query, args)) {
+            chunk.push(row)
+            if (chunk.length >= 500) {
+              onChunk(chunk)
+              chunk = []
+              // Dá um respiro para o event loop e para o WebSocket conseguir enviar
+              await new Promise(resolve => setTimeout(resolve, 0))
+            }
+          }
+          if (chunk.length > 0) {
+            onChunk(chunk)
+          }
+          return { streamed: true }
+        } catch (error) {
+          throw error
+        }
+      } else {
+        return await db.getAllAsync(query, args)
+      }
     } else {
       // expo-sqlite runAsync retorna objeto com meta dados de inserção
       const result = await db.runAsync(query, args)

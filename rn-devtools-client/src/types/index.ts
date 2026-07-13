@@ -58,6 +58,7 @@ export type DevInspectorEvent =
   | { type: 'http:request';        payload: Record<string, unknown> }
   | { type: 'http:response';       payload: Record<string, unknown> }
   | { type: 'network:merged';      payload: Record<string, unknown> }
+  | { type: 'db:chunk';            payload: Record<string, unknown> }
 
 // --- Tipo legado (mantido para compatibilidade) ---
 
@@ -73,7 +74,7 @@ export type ClientMessage =
 export interface DatabaseDriver {
   getDatabases: () => Promise<string[]>
   getTables: (dbName: string) => Promise<string[]>
-  executeSql: (dbName: string, query: string, args?: any[]) => Promise<any>
+  executeSql: (dbName: string, query: string, args?: any[], onChunk?: (chunk: any[]) => void) => Promise<any>
 }
 
 export interface DbCommandPayload {

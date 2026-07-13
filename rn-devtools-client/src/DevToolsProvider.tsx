@@ -35,7 +35,7 @@ export const DevToolsProvider: React.FC<DevToolsProviderProps> = ({
   enabled = true,
   host,
   port = 8347,
-  showFloatingButton = true
+  showFloatingButton = false
 }) => {
   const [isClientReady, setIsClientReady] = useState(false)
 
