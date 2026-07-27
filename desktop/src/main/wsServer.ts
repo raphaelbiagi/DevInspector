@@ -58,15 +58,29 @@ export class DevToolsServer extends EventEmitter {
         })
         req.on('end', () => {
           try {
-            const parsed = JSON.parse(body)
-            this.handleClientEvent(parsed, 'http-bypass', () => {})
+            const doParse = () => {
+              try {
+                const parsed = JSON.parse(body)
+                this.handleClientEvent(parsed, 'http-bypass', () => {})
+              } catch (e) {
+                console.error('[DevInspector] Erro ao parsear payload gigante do POST', e)
+              }
+            }
+
+            if (body.length > 1500000) {
+              console.warn(`[DevInspector] Aviso: Payload POST muito grande (${(body.length / 1024 / 1024).toFixed(2)} MB). Decodificação adiada para não travar o event loop.`)
+              setImmediate(doParse)
+            } else {
+              doParse()
+            }
+
             res.writeHead(200, {
               'Access-Control-Allow-Origin': '*',
               'Content-Type': 'application/json'
             })
             res.end(JSON.stringify({ success: true }))
           } catch (e) {
-            console.error('[DevInspector] Erro ao parsear payload gigante do POST', e)
+            console.error('[DevInspector] Erro ao processar POST request', e)
             res.writeHead(400)
             res.end('Bad Request')
           }
@@ -143,12 +157,28 @@ export class DevToolsServer extends EventEmitter {
 
       ws.on('message', (dataRaw) => {
         try {
-          const parsed = JSON.parse(dataRaw.toString())
-          this.handleClientEvent(parsed, clientId, (ackId) => {
-            if (ackId) sendToClient('ack', null, ackId)
-          })
+          const length = Buffer.isBuffer(dataRaw) ? dataRaw.length : 
+                         (Array.isArray(dataRaw) ? Buffer.concat(dataRaw).length : (dataRaw as any).byteLength || 0)
+          
+          const doParse = () => {
+            try {
+              const parsed = JSON.parse(dataRaw.toString())
+              this.handleClientEvent(parsed, clientId, (ackId) => {
+                if (ackId) sendToClient('ack', null, ackId)
+              })
+            } catch (err) {
+              console.error('[DevInspector] Invalid message received', err)
+            }
+          }
+
+          if (length > 1500000) {
+            console.warn(`[DevInspector] Aviso: Mensagem WS muito grande (${(length / 1024 / 1024).toFixed(2)} MB). Decodificação adiada para não travar o event loop.`)
+            setImmediate(doParse)
+          } else {
+            doParse()
+          }
         } catch (err) {
-          console.error('[DevInspector] Invalid message received', err)
+          console.error('[DevInspector] Error handling message', err)
         }
       })
 

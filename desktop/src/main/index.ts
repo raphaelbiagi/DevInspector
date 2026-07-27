@@ -125,8 +125,8 @@ function setupIPC(): void {
     return devToolsServer?.getSessionStore().listSessions() ?? []
   })
 
-  ipcMain.handle('load-session', (_event, sessionId: string) => {
-    return devToolsServer?.getSessionStore().loadSession(sessionId) ?? null
+  ipcMain.handle('load-session', async (_event, sessionId: string) => {
+    return (await devToolsServer?.getSessionStore().loadSession(sessionId)) ?? null
   })
 
   ipcMain.handle('execute-db-command', async (_event, payload: any) => {
