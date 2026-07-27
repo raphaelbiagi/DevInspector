@@ -1,6 +1,6 @@
 import React from 'react'
 import { Network, TerminalSquare, Activity, Database, Trash2, Download } from 'lucide-react'
-import { TAB_NETWORK, TAB_CONSOLE, TAB_TIMELINE, TAB_DATABASE, TabId } from '../../utils/constants'
+import { TAB_NETWORK, TAB_CONSOLE, TAB_INSIGHTS, TAB_DATABASE, TabId } from '../../utils/constants'
 import { useConsoleStore } from '../../stores/consoleStore'
 import { useTimelineStore } from '../../stores/timelineStore'
 
@@ -51,12 +51,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         <div className="tooltip-wrapper" style={{ width: '100%', display: 'flex', justifyContent: 'center', position: 'relative' }}>
           <button
-            title="Timeline em Cascata"
-            className={`sidebar-btn ${activeTab === TAB_TIMELINE ? 'active' : ''}`}
-            onClick={() => onTabChange(TAB_TIMELINE)}
-            style={{ border: 'none', background: activeTab === TAB_TIMELINE ? 'var(--bg-active)' : 'transparent', padding: 12, borderRadius: 'var(--radius-md)', cursor: 'pointer', opacity: activeTab === TAB_TIMELINE ? 1 : 0.5, transition: 'all 0.2s' }}
+            title="Insights"
+            className={`sidebar-btn ${activeTab === TAB_INSIGHTS ? 'active' : ''}`}
+            onClick={() => onTabChange(TAB_INSIGHTS)}
+            style={{ border: 'none', background: activeTab === TAB_INSIGHTS ? 'var(--bg-active)' : 'transparent', padding: 12, borderRadius: 'var(--radius-md)', cursor: 'pointer', opacity: activeTab === TAB_INSIGHTS ? 1 : 0.5, transition: 'all 0.2s' }}
           >
-            <Activity size={22} color={activeTab === TAB_TIMELINE ? 'var(--color-accent)' : 'var(--color-text)'} strokeWidth={2} />
+            <Activity size={22} color={activeTab === TAB_INSIGHTS ? 'var(--color-accent)' : 'var(--color-text)'} strokeWidth={2} />
             {anomalyCount > 0 && <span className="sidebar-badge" style={{ position: 'absolute', top: 4, right: 8, background: 'var(--color-warning)', color: '#fff', fontSize: 10, padding: '2px 6px', borderRadius: 10, fontWeight: 'bold' }}>{anomalyCount > 99 ? '99+' : anomalyCount}</span>}
           </button>
         </div>

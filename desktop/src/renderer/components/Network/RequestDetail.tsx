@@ -2,8 +2,9 @@ import React, { useState } from 'react'
 import { NetworkRequest } from '../../types/network'
 import { Tabs } from '../shared/Tabs'
 import { JsonViewer } from '../shared/JsonViewer'
-import { formatBytes, formatDuration, getMethodColor, getStatusColor } from '../../utils/formatters'
-import { X, Copy } from 'lucide-react'
+import { formatBytes, formatDuration, getMethodColor, getStatusColor, generateCurlCommand } from '../../utils/formatters'
+import { X, Copy, Terminal } from 'lucide-react'
+import { useNetworkStore } from '../../stores/networkStore'
 
 interface RequestDetailProps {
   request: NetworkRequest
@@ -13,6 +14,7 @@ interface RequestDetailProps {
 export const RequestDetail: React.FC<RequestDetailProps> = ({ request, onClose }) => {
   const [activeTab, setActiveTab] = useState('headers')
   const [loadingContent, setLoadingContent] = useState(false)
+  const panelWidth = useNetworkStore(state => state.panelWidth)
 
   React.useEffect(() => {
     setLoadingContent(true)
@@ -54,7 +56,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = ({ request, onClose }
   }
 
   return (
-    <div className="split-panel-right">
+    <div className="split-panel-right" style={{ width: panelWidth }}>
       <div className="detail-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, overflow: 'hidden' }}>
           <span style={{ color: getStatusColor(request.statusCode) }}>
@@ -96,14 +98,39 @@ export const RequestDetail: React.FC<RequestDetailProps> = ({ request, onClose }
                 message += `\n\n*Response Data:*\n\`\`\`json\n${resText}\n\`\`\``
               }
 
-              navigator.clipboard.writeText(message).then(() => {
-                alert('Requisição e Resposta copiadas!')
-              })
+              if (window.devInspector?.writeClipboard) {
+                window.devInspector.writeClipboard(message).then(() => {
+                  alert('Requisição e Resposta copiadas!')
+                })
+              } else {
+                navigator.clipboard.writeText(message).then(() => {
+                  alert('Requisição e Resposta copiadas!')
+                })
+              }
             }}
             style={{ fontSize: 12, padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 6, background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', color: 'var(--color-text)' }}
             title="Copiar Request/Response p/ WhatsApp"
           >
-            <Copy size={14} /> Copiar p/ Whats
+            <Copy size={14} /> Whats
+          </button>
+          <button 
+            className="btn" 
+            onClick={() => {
+              const curl = generateCurlCommand(request)
+              if (window.devInspector?.writeClipboard) {
+                window.devInspector.writeClipboard(curl).then(() => {
+                  alert('Comando cURL copiado!')
+                })
+              } else {
+                navigator.clipboard.writeText(curl).then(() => {
+                  alert('Comando cURL copiado!')
+                })
+              }
+            }}
+            style={{ fontSize: 12, padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 6, background: 'var(--bg-elevated)', border: '1px solid var(--border-color)', color: 'var(--color-text)' }}
+            title="Copiar como cURL"
+          >
+            <Terminal size={14} /> cURL
           </button>
           <button className="btn-icon" style={{ color: '#fff' }} onClick={onClose}>
             <X size={16} />

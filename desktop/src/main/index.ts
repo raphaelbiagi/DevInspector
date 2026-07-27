@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, clipboard } from 'electron'
 import { join } from 'path'
 import { DevToolsServer } from './wsServer'
 import { DiscoveryServer } from './discovery-server'
@@ -41,6 +41,10 @@ function createWindow(): void {
   mainWindow.on('closed', () => {
     mainWindow = null
   })
+
+  mainWindow.on('focus', () => {
+    if (app.setBadgeCount) app.setBadgeCount(0)
+  })
 }
 
 function startServer(): void {
@@ -80,6 +84,9 @@ function startServer(): void {
 
   devToolsServer.on('devinspector:anomaly', (anomaly) => {
     mainWindow?.webContents.send('devinspector:anomaly', anomaly)
+    if (mainWindow && !mainWindow.isFocused() && app.setBadgeCount) {
+      app.setBadgeCount(app.getBadgeCount() + 1)
+    }
   })
 
   devToolsServer.on('devinspector:diff', (diff) => {
@@ -96,6 +103,10 @@ function startServer(): void {
 
 function setupIPC(): void {
   ipcMain.handle('get-server-port', () => DEFAULT_PORT)
+
+  ipcMain.handle('write-clipboard', (_event, text: string) => {
+    clipboard.writeText(text)
+  })
 
   ipcMain.handle('clear-client-logs', () => {
     devToolsServer?.broadcastToClients('server:clear-logs', {})

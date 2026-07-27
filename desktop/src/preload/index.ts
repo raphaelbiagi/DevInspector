@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
 
 export interface DevInspectorAPI {
   getServerPort: () => Promise<number>
+  writeClipboard: (text: string) => Promise<void>
   clearClientLogs: () => Promise<void>
   exportSaveDialog: (defaultName: string) => Promise<string | null>
   writeExportFile: (filePath: string, content: string) => Promise<void>
@@ -34,6 +35,7 @@ function createListener(channel: string, callback: (...args: any[]) => void): ()
 
 const api: DevInspectorAPI = {
   getServerPort: () => ipcRenderer.invoke('get-server-port'),
+  writeClipboard: (text: string) => ipcRenderer.invoke('write-clipboard', text),
   clearClientLogs: () => ipcRenderer.invoke('clear-client-logs'),
   exportSaveDialog: (defaultName: string) => ipcRenderer.invoke('export-save-dialog', defaultName),
   writeExportFile: (filePath: string, content: string) => ipcRenderer.invoke('write-export-file', filePath, content),

@@ -1,3 +1,5 @@
+import type { NetworkRequest } from '../types/network'
+
 export function formatBytes(bytes: number | null): string {
   if (bytes === null || bytes === undefined) return '—'
   if (bytes === 0) return '0 B'
@@ -98,4 +100,29 @@ export function safeStringify(value: unknown, indent: number = 2): string {
     if (val === undefined) return '[undefined]'
     return val
   }, indent)
+}
+
+export function generateCurlCommand(request: NetworkRequest): string {
+  let curl = `curl -X ${request.method} "${request.url}"`
+  
+  if (request.requestHeaders) {
+    for (const [key, value] of Object.entries(request.requestHeaders)) {
+      curl += ` \\\n  -H "${key}: ${value.replace(/"/g, '\\"')}"`
+    }
+  }
+
+  if (request.requestBody) {
+    let bodyData = ''
+    if (typeof request.requestBody === 'string') {
+      bodyData = request.requestBody
+    } else {
+      try { bodyData = JSON.stringify(request.requestBody) } catch {}
+    }
+    if (bodyData) {
+      const escapedBody = bodyData.replace(/'/g, "'\\''")
+      curl += ` \\\n  -d '${escapedBody}'`
+    }
+  }
+
+  return curl
 }

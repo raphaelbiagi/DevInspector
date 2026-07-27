@@ -8,6 +8,7 @@ export const RequestList: React.FC = () => {
   const requests = useNetworkStore(useShallow((state) => state.getFilteredRequests()))
   const selectedId = useNetworkStore((state) => state.selectedId)
   const selectRequest = useNetworkStore((state) => state.selectRequest)
+  const selectNextRequest = useNetworkStore((state) => state.selectNextRequest)
   
   const parentRef = useRef<HTMLDivElement>(null)
   
@@ -35,6 +36,35 @@ export const RequestList: React.FC = () => {
     const isAtBottom = scrollHeight - scrollTop - clientHeight < 50
     setAutoScroll(isAtBottom)
   }
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return
+      }
+      if (e.key === 'j' || e.key === 'ArrowDown') {
+        e.preventDefault()
+        selectNextRequest(1)
+      } else if (e.key === 'k' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        selectNextRequest(-1)
+      }
+    }
+    
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selectNextRequest])
+
+  // Scroll to selected
+  useEffect(() => {
+    if (selectedId) {
+      const idx = requests.findIndex(r => r.id === selectedId)
+      if (idx !== -1) {
+        rowVirtualizer.scrollToIndex(idx, { align: 'auto' })
+      }
+    }
+  }, [selectedId, requests, rowVirtualizer])
 
   return (
     <div className="request-list-container" ref={parentRef} onScroll={handleScroll}>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import { NetworkToolbar } from './NetworkToolbar'
 import { NetworkStats } from './NetworkStats'
 import { RequestList } from './RequestList'
@@ -10,7 +10,31 @@ export const NetworkPanel: React.FC = () => {
   const selectedId = useNetworkStore((state) => state.selectedId)
   const selectedRequest = useNetworkStore((state) => state.getSelectedRequest())
   const selectRequest = useNetworkStore((state) => state.selectRequest)
+  const setPanelWidth = useNetworkStore((state) => state.setPanelWidth)
   const [showTimeline, setShowTimeline] = useState(false)
+  const isDragging = useRef(false)
+
+  const handleMouseDown = () => {
+    isDragging.current = true
+    document.body.style.cursor = 'col-resize'
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+  }
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (!isDragging.current) return
+    const newWidth = window.innerWidth - e.clientX
+    if (newWidth > 320 && newWidth < 800) {
+      setPanelWidth(newWidth)
+    }
+  }
+
+  const handleMouseUp = () => {
+    isDragging.current = false
+    document.body.style.cursor = ''
+    document.removeEventListener('mousemove', handleMouseMove)
+    document.removeEventListener('mouseup', handleMouseUp)
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -36,7 +60,7 @@ export const NetworkPanel: React.FC = () => {
 
         {selectedId && selectedRequest && (
           <>
-            <div className="split-panel-divider" />
+            <div className="split-panel-divider" onMouseDown={handleMouseDown} />
             <RequestDetail request={selectedRequest} onClose={() => selectRequest(null)} />
           </>
         )}

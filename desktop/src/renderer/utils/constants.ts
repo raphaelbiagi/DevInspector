@@ -9,6 +9,6 @@ export const LOG_LEVELS = ['log', 'info', 'warn', 'error', 'table'] as const
 
 export const TAB_NETWORK = 'network' as const
 export const TAB_CONSOLE = 'console' as const
-export const TAB_TIMELINE = 'timeline' as const
+export const TAB_INSIGHTS = 'insights' as const
 export const TAB_DATABASE = 'database' as const
-export type TabId = typeof TAB_NETWORK | typeof TAB_CONSOLE | typeof TAB_TIMELINE | typeof TAB_DATABASE
+export type TabId = typeof TAB_NETWORK | typeof TAB_CONSOLE | typeof TAB_INSIGHTS | typeof TAB_DATABASE

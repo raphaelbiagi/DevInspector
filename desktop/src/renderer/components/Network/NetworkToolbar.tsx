@@ -44,6 +44,7 @@ export const NetworkToolbar: React.FC = () => {
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
         <SearchInput
+          id="network-search-input"
           value={filter.search}
           onChange={setSearch}
           placeholder="Filtrar URLs..."

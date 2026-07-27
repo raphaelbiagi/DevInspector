@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import type {
   NetworkRequest,
   NetworkRequestStartPayload,
@@ -19,6 +20,8 @@ interface NetworkState {
     onlyErrors: boolean
   }
   selectedId: string | null
+  pinnedIds: string[]
+  panelWidth: number
 
   // Actions
   addRequestStart: (payload: NetworkRequestStartPayload) => void
@@ -30,6 +33,9 @@ interface NetworkState {
   setSearch: (search: string) => void
   setOnlyErrors: (onlyErrors: boolean) => void
   selectRequest: (id: string | null) => void
+  togglePin: (id: string) => void
+  selectNextRequest: (direction: 1 | -1) => void
+  setPanelWidth: (width: number) => void
 
   // Derived
   getFilteredRequests: () => NetworkRequest[]
@@ -37,17 +43,21 @@ interface NetworkState {
   getSelectedRequest: () => NetworkRequest | null
 }
 
-export const useNetworkStore = create<NetworkState>((set, get) => ({
-  requests: new Map(),
-  filter: {
-    method: 'ALL',
-    status: 'ALL',
-    search: '',
-    onlyErrors: false
-  },
-  selectedId: null,
+export const useNetworkStore = create<NetworkState>()(
+  persist(
+    (set, get) => ({
+      requests: new Map(),
+      filter: {
+        method: 'ALL',
+        status: 'ALL',
+        search: '',
+        onlyErrors: false
+      },
+      selectedId: null,
+      pinnedIds: [],
+      panelWidth: 420,
 
-  addRequestStart: (payload) => {
+      addRequestStart: (payload) => {
     set((state) => {
       const requests = new Map(state.requests)
 
@@ -137,8 +147,38 @@ export const useNetworkStore = create<NetworkState>((set, get) => ({
 
   selectRequest: (id) => set({ selectedId: id }),
 
+  togglePin: (id) => set((state) => {
+    if (state.pinnedIds.includes(id)) {
+      return { pinnedIds: state.pinnedIds.filter(pid => pid !== id) }
+    }
+    return { pinnedIds: [...state.pinnedIds, id] }
+  }),
+
+  selectNextRequest: (direction) => {
+    const { getFilteredRequests, selectedId, selectRequest } = get()
+    const filtered = getFilteredRequests()
+    if (filtered.length === 0) return
+
+    if (!selectedId) {
+      selectRequest(filtered[0].id)
+      return
+    }
+
+    const currentIndex = filtered.findIndex(r => r.id === selectedId)
+    if (currentIndex === -1) {
+      selectRequest(filtered[0].id)
+      return
+    }
+
+    let nextIndex = currentIndex + direction
+    if (nextIndex < 0) nextIndex = 0
+    if (nextIndex >= filtered.length) nextIndex = filtered.length - 1
+
+    selectRequest(filtered[nextIndex].id)
+  },
+
   getFilteredRequests: () => {
-    const { requests, filter } = get()
+    const { requests, filter, pinnedIds } = get()
     let result = Array.from(requests.values())
 
     if (filter.method !== 'ALL') {
@@ -164,7 +204,18 @@ export const useNetworkStore = create<NetworkState>((set, get) => ({
       result = result.filter((r) => r.url.toLowerCase().includes(s))
     }
 
-    return result
+    const pinned: NetworkRequest[] = []
+    const unpinned: NetworkRequest[] = []
+    
+    for (const r of result) {
+      if (pinnedIds.includes(r.id)) {
+        pinned.push(r)
+      } else {
+        unpinned.push(r)
+      }
+    }
+
+    return [...pinned, ...unpinned]
   },
 
   getStats: () => {
@@ -198,5 +249,13 @@ export const useNetworkStore = create<NetworkState>((set, get) => ({
     const { requests, selectedId } = get()
     if (!selectedId) return null
     return requests.get(selectedId) ?? null
-  }
-}))
+  },
+  
+  setPanelWidth: (width) => set({ panelWidth: width })
+    }),
+    {
+      name: 'devinspector-network-store',
+      partialize: (state) => ({ filter: state.filter, pinnedIds: state.pinnedIds, panelWidth: state.panelWidth })
+    }
+  )
+)

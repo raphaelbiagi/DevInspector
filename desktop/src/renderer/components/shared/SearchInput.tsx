@@ -2,12 +2,14 @@ import React from 'react'
 import { Search } from 'lucide-react'
 
 interface SearchInputProps {
+  id?: string
   value: string
   onChange: (value: string) => void
   placeholder?: string
 }
 
 export const SearchInput: React.FC<SearchInputProps> = ({ 
+  id,
   value, 
   onChange, 
   placeholder = 'Search...' 
@@ -18,6 +20,7 @@ export const SearchInput: React.FC<SearchInputProps> = ({
         <Search size={14} />
       </div>
       <input
+        id={id}
         type="text"
         className="search-input"
         placeholder={placeholder}
