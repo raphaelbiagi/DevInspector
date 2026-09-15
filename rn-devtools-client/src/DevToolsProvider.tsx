@@ -7,9 +7,12 @@ import { FloatingDebugger } from './components/FloatingDebugger'
 
 export interface DevToolsProviderProps {
   children: ReactNode
+  /** Liga o DevInspector. Padrão: `__DEV__` — desligado em builds de produção. */
   enabled?: boolean
+  /** Fixa o IP do desktop, pulando o auto-discovery. */
   host?: string
   port?: number
+  /** Exibe a bolha de debug dentro do próprio app. */
   showFloatingButton?: boolean
 }
 
@@ -32,7 +35,9 @@ export interface DevToolsProviderProps {
  */
 export const DevToolsProvider: React.FC<DevToolsProviderProps> = ({
   children,
-  enabled = true,
+  // Default seguro: esquecer de passar `enabled` não pode significar subir para
+  // a loja interceptando fetch/XHR/console (headers e body incluem Authorization).
+  enabled = __DEV__,
   host,
   port = 8347,
   showFloatingButton = false
