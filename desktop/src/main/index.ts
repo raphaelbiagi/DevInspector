@@ -179,19 +179,26 @@ function setupIPC(): void {
     if (payload.action === 'getDatabases') {
       const localDbs = localDbManager.listDatabases()
       let remoteDbs: string[] = []
+      // Sem isto, "app desconectado", "driver não registrado" e "o app tem zero
+      // bancos" produzem exatamente o mesmo painel vazio — e não há como
+      // distinguir os três olhando a tela.
+      let remoteError: string | null = null
       if (devToolsServer) {
         try {
           const res = await devToolsServer.executeDbCommand({ action: 'getDatabases' })
           if (Array.isArray(res)) {
             remoteDbs = res
           }
-        } catch {
-          // Device not connected or error, ignore gracefully
+        } catch (err: any) {
+          remoteError = err?.message || String(err)
         }
+      } else {
+        remoteError = 'Servidor não inicializado'
       }
       return {
         localDbs,
-        remoteDbs
+        remoteDbs,
+        remoteError
       }
     }
 

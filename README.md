@@ -54,7 +54,7 @@ export default function App() {
 
 | Prop | Padrão | Para que serve |
 |---|---|---|
-| `enabled` | `true` | Desliga o SDK por completo |
+| `enabled` | `__DEV__` | Liga o SDK. Desligado em builds de produção por padrão. |
 | `host` | auto-discovery | Fixa o IP do desktop, pulando a descoberta automática |
 | `port` | `8347` | Porta do servidor |
 | `showFloatingButton` | `false` | Exibe a bolha de debug dentro do próprio app |
@@ -67,7 +67,8 @@ O SDK não depende de nenhuma biblioteca de SQLite — você injeta a que já us
 
 ```tsx
 import * as SQLite from 'expo-sqlite'
-import * as FileSystem from 'expo-file-system'
+// SDK 54+: o subcaminho /legacy é obrigatório. Ver nota abaixo.
+import * as FileSystem from 'expo-file-system/legacy'
 import { devToolsClient, createExpoSqliteAdapter } from 'rn-devtools-client'
 
 devToolsClient.registerDatabaseDriver(
@@ -79,6 +80,8 @@ devToolsClient.registerDatabaseDriver(
   })
 )
 ```
+
+> **Atenção ao `/legacy` a partir do SDK 54.** Em `expo-file-system@19` o import raiz virou a API nova (`File`, `Directory`, `Paths`), que **não** exporta `documentDirectory` nem `readDirectoryAsync` — os dois métodos que a varredura usa. Importando de `'expo-file-system'`, o adapter captura a exceção e devolve lista vazia: o painel de banco fica em branco e a única pista é um `console.warn` na aba Console. Em SDK 53 ou anterior, use `'expo-file-system'`.
 
 **react-native-sqlite-storage:**
 

@@ -34,6 +34,7 @@ export const DatabasePanel: React.FC = () => {
     tableData,
     queryResult,
     queryError,
+    remoteError,
     isLoading,
     fetchDatabases,
     restorePersistedDatabases,
@@ -382,6 +383,25 @@ export const DatabasePanel: React.FC = () => {
             <div style={{ padding: '24px 16px', fontSize: 13, color: 'var(--color-text-dim)', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
               <Database size={28} style={{ opacity: 0.3 }} />
               <div>Nenhum banco carregado.</div>
+
+              {/* Um painel vazio tem várias causas distintas. Dizer qual é
+                  economiza a caçada que o usuário faria no lado do app. */}
+              {remoteError ? (
+                <div style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--color-text-dim)', maxWidth: 300 }}>
+                  <strong style={{ color: 'var(--color-warning, #d97706)' }}>Dispositivo: {remoteError}</strong>
+                  <div style={{ marginTop: 6 }}>
+                    Verifique se o app está conectado e se chamou{' '}
+                    <code>registerDatabaseDriver()</code>.
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--color-text-dim)', maxWidth: 300 }}>
+                  O app respondeu, mas não listou nenhum banco. Confira o{' '}
+                  <code>getDatabases</code> / <code>fsLib</code> do adapter — a aba
+                  Console costuma trazer o aviso do DevInspector explicando.
+                </div>
+              )}
+
               <button
                 onClick={() => importDatabaseFile()}
                 style={{

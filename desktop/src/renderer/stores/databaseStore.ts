@@ -41,6 +41,8 @@ interface DatabaseState {
 
   queryResult: { columns: string[], rows: any[] } | null
   queryError: string | null
+  /** Por que o dispositivo não devolveu bancos. `null` = devolveu com sucesso. */
+  remoteError: string | null
   isLoading: boolean
   
   savedQueries: SavedQuery[]
@@ -74,8 +76,9 @@ export const useDatabaseStore = create<DatabaseState>((set, get) => ({
 
   queryResult: null,
   queryError: null,
+  remoteError: null,
   isLoading: false,
-  
+
   savedQueries: [],
 
   clearError: () => set({ queryError: null }),
@@ -118,14 +121,16 @@ export const useDatabaseStore = create<DatabaseState>((set, get) => ({
   },
 
   fetchDatabases: async () => {
-    set({ isLoading: true, queryError: null })
+    set({ isLoading: true, queryError: null, remoteError: null })
     try {
       const res = await window.devInspector.executeDbCommand({ action: 'getDatabases' })
       let dbItems: DatabaseItem[] = []
+      let remoteError: string | null = null
 
       if (res && typeof res === 'object' && ('localDbs' in res || 'remoteDbs' in res)) {
         const localDbs: any[] = res.localDbs || []
         const remoteDbs: string[] = res.remoteDbs || []
+        remoteError = res.remoteError ?? null
 
         localDbs.forEach(l => {
           dbItems.push({
@@ -154,7 +159,7 @@ export const useDatabaseStore = create<DatabaseState>((set, get) => ({
         nextSelectedDb = null
       }
 
-      set({ databases: dbItems, selectedDb: nextSelectedDb, isLoading: false })
+      set({ databases: dbItems, selectedDb: nextSelectedDb, remoteError, isLoading: false })
     } catch (err: any) {
       set({ queryError: err.message, isLoading: false })
     }
