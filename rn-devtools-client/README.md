@@ -106,7 +106,17 @@ export function DevToolsRoot({ children }: { children: React.ReactNode }) {
 
 > O `if (!__DEV__) return` fica **dentro** do `useEffect`, não antes dele, para não violar as Rules of Hooks.
 
-Para varrer a pasta `SQLite/` automaticamente em vez de listar os bancos à mão, passe `fsLib: FileSystem` (de `expo-file-system`) no lugar de `getDatabases`.
+#### Listar os bancos automaticamente
+
+Para varrer a pasta `SQLite/` em vez de manter a lista de bancos à mão, passe `fsLib` no lugar de `getDatabases`:
+
+```tsx
+import * as FileSystem from 'expo-file-system/legacy'
+
+createExpoSqliteAdapter({ sqliteLib: SQLite, fsLib: FileSystem })
+```
+
+> **O `/legacy` é obrigatório a partir do SDK 54.** Em `expo-file-system@19` o import raiz passou a ser a API nova (`File`, `Directory`, `Paths`), que **não** exporta `documentDirectory` nem `readDirectoryAsync` — os dois métodos que o adapter usa. Importando de `'expo-file-system'` a varredura lança, o adapter captura, e você recebe uma lista de bancos vazia — o sintoma é o painel de banco em branco, com um `console.warn` do DevInspector como única pista. Em SDK 53 ou anterior, importe de `'expo-file-system'` normalmente.
 
 ### 3. `metro.config.js`
 
