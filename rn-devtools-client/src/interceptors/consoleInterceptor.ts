@@ -88,16 +88,29 @@ export function installConsoleInterceptor(client: DevToolsClient) {
     if ((global as any).ErrorUtils) {
       originalErrorHandler = (global as any).ErrorUtils.getGlobalHandler()
       ;(global as any).ErrorUtils.setGlobalHandler((error: any, isFatal?: boolean) => {
-        client.send({
-          type: 'console:log',
-          payload: {
-            id: generateUuid(),
-            level: isFatal ? 'fatal' : 'error',
-            args: [safeSerialize(`[Global Exception] ${error.message || error}`)],
-            timestamp: Date.now(),
-            stackTrace: error.stack || null
-          }
-        })
+        try {
+          const message = error instanceof Error ? error.message : String(error)
+          const stack = (error instanceof Error ? error.stack : null) ?? null
+
+          client.send({
+            type: 'console:log',
+            payload: {
+              id: generateUuid(),
+              level: isFatal ? 'fatal' : 'error',
+              args: [
+                safeSerialize(`[Global Exception] ${isFatal ? '(Fatal) ' : ''}${message}`),
+                // O objeto de erro completo permite inspecionar campos customizados
+                // (código HTTP, causa, metadados) que a mensagem sozinha perderia.
+                safeSerialize({ isFatal: !!isFatal, stack, errorObject: error })
+              ],
+              timestamp: Date.now(),
+              stackTrace: stack
+            }
+          })
+        } catch {
+          // Nunca deixar o logging impedir o tratamento de erro do React Native
+        }
+
         if (originalErrorHandler) {
           originalErrorHandler(error, isFatal)
         }

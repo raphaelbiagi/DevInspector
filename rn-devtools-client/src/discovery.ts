@@ -1,7 +1,11 @@
 /**
  * DevInspector Discovery — Localiza automaticamente o Desktop na rede local
  *
- * Usa UDP broadcast na porta 41234.
+ * React Native não expõe sockets UDP, então o cliente descobre o desktop por
+ * HTTP probing: testa candidatos em paralelo no endpoint `/ping` e fica com o
+ * primeiro que responder. (O desktop também mantém um servidor de discovery UDP
+ * na porta 41234, usado por outros clientes — não por este.)
+ *
  * Funciona em:
  * - iOS Simulator (compartilha rede do host)
  * - Android Emulator (fallback 10.0.2.2)
@@ -16,8 +20,6 @@ export interface DiscoveryResult {
   machineName: string
 }
 
-const DISCOVERY_PORT = 41234
-const DISCOVERY_MESSAGE = 'DISCOVER_DEVINSPECTOR'
 const DISCOVERY_TIMEOUT_MS = 3000
 
 /**
@@ -35,18 +37,49 @@ export async function discoverDesktop(lifesaverIp?: string | null): Promise<Disc
   
   const port = 8347 // Porta padrão do DevInspector
 
-  // Tenta cada candidato em paralelo com timeout
-  const results = await Promise.allSettled(
-    candidates.map(host => probeHost(host, port))
-  )
+  // Testa todos os candidatos em paralelo e fica com o PRIMEIRO A RESPONDER.
+  // Percorrer os resultados na ordem do array faria `localhost` vencer sempre,
+  // mesmo quando o alvo correto é a máquina na rede.
+  return raceToFirstHit(candidates.map(host => probeHost(host, port)))
+}
 
-  for (const result of results) {
-    if (result.status === 'fulfilled' && result.value !== null) {
-      return result.value
+/**
+ * Resolve com o primeiro probe bem-sucedido, ou null quando todos falharem.
+ * Escrito à mão em vez de `Promise.any` porque `any` rejeita com AggregateError
+ * e nem toda engine JS embarcada em RN o expõe.
+ */
+function raceToFirstHit(
+  probes: Array<Promise<DiscoveryResult | null>>
+): Promise<DiscoveryResult | null> {
+  return new Promise((resolve) => {
+    let pending = probes.length
+    let settled = false
+
+    if (pending === 0) {
+      resolve(null)
+      return
     }
-  }
 
-  return null
+    for (const probe of probes) {
+      probe
+        .then((result) => {
+          if (result && !settled) {
+            settled = true
+            resolve(result)
+          }
+        })
+        .catch(() => {
+          // probeHost já engole os próprios erros; aqui é só defesa
+        })
+        .then(() => {
+          pending--
+          if (pending === 0 && !settled) {
+            settled = true
+            resolve(null)
+          }
+        })
+    }
+  })
 }
 
 /**

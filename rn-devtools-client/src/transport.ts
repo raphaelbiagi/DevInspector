@@ -7,6 +7,7 @@ interface TransportConfig {
   port?: number
   onStatusChange?: (status: ConnectionStatus) => void
   onToggleDebugger?: (visible: boolean) => void
+  onClearLogs?: () => void
   onDbCommand?: (payload: any) => Promise<any>
 }
 
@@ -68,7 +69,10 @@ export class DevInspectorTransport {
           console.log(`[DevInspector] Bóia de Salvação guardada na memória: ${payload}`)
           this.lifesaverIp = payload
         } else if (event === 'server:clear-logs') {
-          // Placeholder para limpeza local futura
+          // O botão "Limpar" do desktop também esvazia o buffer local do app,
+          // para que a UI In-App (bolha) não continue mostrando o que já foi limpo.
+          this.eventQueue = []
+          this.config.onClearLogs?.()
         } else if (event === 'server:toggle-debugger') {
           this.config.onToggleDebugger?.(payload.enabled)
         } else if (event === 'server:db:execute') {

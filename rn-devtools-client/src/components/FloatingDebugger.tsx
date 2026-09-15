@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { View, Text, StyleSheet, PanResponder, Animated, TouchableOpacity, Dimensions } from 'react-native'
-import { Bug } from 'lucide-react-native'
+import { BugIcon } from './icons'
 import { DebuggerModal } from './DebuggerModal'
 import { devToolsClient } from '../DevToolsClient'
 import { useDevInspectorHistory } from '../hooks/useDevInspectorHistory'
@@ -53,7 +53,7 @@ export const FloatingDebugger = () => {
           onPress={() => setModalVisible(true)}
           activeOpacity={0.8}
         >
-          <Bug color="#3B82F6" size={24} />
+          <BugIcon color="#3B82F6" size={24} />
           {errorCount > 0 && (
             <View style={styles.badge}>
               <Text style={styles.badgeText}>{errorCount > 9 ? '9+' : errorCount}</Text>

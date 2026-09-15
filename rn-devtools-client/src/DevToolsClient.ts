@@ -1,6 +1,7 @@
 import { initTransport, getTransport, hasTransport, DevInspectorTransport } from './transport'
 import { discoverDesktop, getFallbackHost } from './discovery'
 import { AppState, type AppStateStatus } from 'react-native'
+import { getDeviceDetails, SDK_VERSION } from './deviceInfo'
 import type { ClientMessage, ConnectionStatus, DevInspectorEvent, DatabaseDriver, DbCommandPayload } from './types'
 
 const DEFAULT_PORT = 8347
@@ -65,12 +66,13 @@ export class DevToolsClient {
         
         if (status === 'connected' && this.transport) {
           console.log('[DevInspector] Conectado! Enviando handshake...')
+          const device = getDeviceDetails()
           this.transport.send({
             type: 'session:handshake',
             payload: {
-              sdkVersion: '1.0.0',
-              appName: 'React Native App',
-              platform: 'native'
+              sdkVersion: SDK_VERSION,
+              ...device,
+              connectedAt: Date.now()
             } as Record<string, unknown>
           })
         }
@@ -104,6 +106,10 @@ export class DevToolsClient {
       onToggleDebugger: (visible) => {
         console.log(`[DevInspector] Desktop solicitou UI In-App visível: ${visible}`)
         this.setVisibility(visible)
+      },
+      onClearLogs: () => {
+        this.history = []
+        this.notifyHistoryListeners()
       },
       onDbCommand: async (payload: DbCommandPayload) => {
         return this.handleDbCommand(payload)
@@ -157,40 +163,52 @@ export class DevToolsClient {
     const fullConverted = this.convertToEvent(message, true)
     if (!fullConverted) return
 
-    let finalStr = ''
+    // Estima o tamanho do payload checando a string 'body' (onde mora 99% do peso)
+    let estimatedSize = 0
     try {
-      // É crucial embrulhar no mesmo formato que o WebSocket espera!
-      finalStr = JSON.stringify({
-        event: 'devinspector:event',
-        payload: fullConverted
-      })
-    } catch (e) {
-      console.warn('[DevInspector] Falha ao stringificar evento', e)
-    }
+      const body = (fullConverted.payload as any)?.body
+      if (typeof body === 'string') {
+        estimatedSize = body.length
+      }
+    } catch {}
 
     // Se o evento completo tem mais de 1.5MB, usamos o Bypass Nativo via HTTP POST!
-    if (finalStr.length > 1500000 && this.transport) {
+    if (estimatedSize > 1500000 && this.transport) {
       const host = this.transport.getCurrentHost()
       const port = this.transport.getCurrentPort()
 
       if (host) {
-        // Envia na íntegra por fora do WebSocket
-        fetch(`http://${host}:${port}/upload-payload`, {
-          method: 'POST',
-          body: finalStr
-        }).catch(err => {
-          console.warn('[DevInspector] Falha no Bypass HTTP POST:', err)
-        })
+        // Adia o trabalho pesado pra não travar a thread JS (InteractionManager/setTimeout)
+        setTimeout(() => {
+          let finalStr = ''
+          try {
+            finalStr = JSON.stringify({
+              event: 'devinspector:event',
+              payload: fullConverted
+            })
+          } catch (e) {
+            console.warn('[DevInspector] Falha ao stringificar evento gigante', e)
+            return
+          }
 
-        // Pro histórico local da Bolha (In-App), temos que truncar pra não acabar com a RAM
-        const truncatedConverted = this.convertToEvent(message, false)
-        if (truncatedConverted) {
-          this.history.unshift(truncatedConverted)
-          if (this.history.length > 100) this.history.pop()
-          this.notifyHistoryListeners()
-        }
+          // Envia na íntegra por fora do WebSocket
+          fetch(`http://${host}:${port}/upload-payload`, {
+            method: 'POST',
+            body: finalStr
+          }).catch(err => {
+            console.warn('[DevInspector] Falha no Bypass HTTP POST:', err)
+          })
+
+          // Pro histórico local da Bolha (In-App), temos que truncar pra não acabar com a RAM
+          const truncatedConverted = this.convertToEvent(message, false)
+          if (truncatedConverted) {
+            this.history.unshift(truncatedConverted)
+            if (this.history.length > 100) this.history.pop()
+            this.notifyHistoryListeners()
+          }
+        }, 0)
         
-        return // Encerra (Não enfileira no WebSocket)
+        return // Encerra (Não enfileira no WebSocket agora, o setTimeout resolve)
       }
     }
 
@@ -365,6 +383,33 @@ export class DevToolsClient {
     return data;
   }
 
+  private estimateObjectSize(data: any, limit: number): number {
+    let size = 0;
+    const stack = [data];
+    while (stack.length > 0 && size <= limit) {
+      const curr = stack.pop();
+      if (curr === null || curr === undefined) {
+        size += 4;
+      } else if (typeof curr === 'string') {
+        size += curr.length + 2;
+      } else if (typeof curr === 'number' || typeof curr === 'boolean') {
+        size += 8;
+      } else if (Array.isArray(curr)) {
+        size += 2;
+        for (let i = 0; i < curr.length; i++) stack.push(curr[i]);
+      } else if (typeof curr === 'object') {
+        size += 2;
+        for (const key in curr) {
+          if (Object.prototype.hasOwnProperty.call(curr, key)) {
+            size += key.length + 2;
+            stack.push(curr[key]);
+          }
+        }
+      }
+    }
+    return size;
+  }
+
   // Helper para proteger o Histórico de payloads gigantescos
   private safeStringify(data: any, skipTruncation: boolean): string {
     if (data === null || data === undefined) return ''
@@ -382,23 +427,29 @@ export class DevToolsClient {
       }
     }
 
+    if (!skipTruncation) {
+      const estimated = this.estimateObjectSize(parsedData, 1500000);
+      if (estimated > 1500000) {
+        // Caiu na malha fina! Trunca pra não explodir a RAM do celular no Histórico In-App
+        let safeData = this.truncateDeep(parsedData, 4, 0);
+        
+        const aviso = `Payload original era pesado (estimado > 1.5 MB). Foi enviado completo ao Desktop via Bypass, mas podado aqui no Histórico do celular.`
+        if (typeof safeData === 'object' && safeData !== null && !Array.isArray(safeData)) {
+           safeData['_devinspector_warning'] = aviso
+        } else if (Array.isArray(safeData)) {
+           safeData.unshift({ _devinspector_warning: aviso })
+        }
+  
+        try {
+          return JSON.stringify(safeData)
+        } catch (err) {
+          return `{"_devinspector_error": "Erro ao serializar payload truncado: ${err instanceof Error ? err.message : String(err)}"}`
+        }
+      }
+    }
+
     try {
-      const stringified = JSON.stringify(parsedData)
-      if (skipTruncation || stringified.length <= 1500000) {
-        return stringified
-      }
-
-      // Caiu na malha fina! Trunca pra não explodir a RAM do celular no Histórico In-App
-      let safeData = this.truncateDeep(parsedData, 4, 0);
-      
-      const aviso = `Payload original era pesado (${(stringified.length / 1024 / 1024).toFixed(2)} MB). Foi enviado completo ao Desktop via Bypass, mas podado aqui no Histórico do celular.`
-      if (typeof safeData === 'object' && safeData !== null && !Array.isArray(safeData)) {
-         safeData['_devinspector_warning'] = aviso
-      } else if (Array.isArray(safeData)) {
-         safeData.unshift({ _devinspector_warning: aviso })
-      }
-
-      return JSON.stringify(safeData)
+      return JSON.stringify(parsedData)
     } catch (err) {
       return `{"_devinspector_error": "Erro ao serializar payload: ${err instanceof Error ? err.message : String(err)}"}`
     }
@@ -410,7 +461,8 @@ export class DevToolsClient {
         return {
           type: 'session:handshake',
           payload: {
-            sdkVersion: '1.0.0',
+            ...getDeviceDetails(),
+            sdkVersion: SDK_VERSION,
             appName: message.payload.appName,
             platform: message.payload.platform,
           } as Record<string, unknown>,

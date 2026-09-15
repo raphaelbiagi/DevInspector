@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react'
 import { Modal, View, Text, TouchableOpacity, FlatList, StyleSheet, ScrollView, TextInput, Platform, StatusBar } from 'react-native'
-import { Bug } from 'lucide-react-native'
+import { BugIcon } from './icons'
 import { useDevInspectorHistory } from '../hooks/useDevInspectorHistory'
 import type { DevInspectorEvent } from '../types'
 
@@ -290,7 +290,7 @@ export const DebuggerModal = ({ visible, onClose }: { visible: boolean; onClose:
       <View style={styles.container}>
         <View style={styles.header}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Bug color="#4CA1AF" size={20} />
+            <BugIcon color="#4CA1AF" size={20} />
             <Text style={styles.title}>DevInspector</Text>
           </View>
           <TouchableOpacity onPress={onClose} style={styles.closeHeaderBtn}>
