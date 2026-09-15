@@ -1,5 +1,14 @@
+export interface LocalDatabaseInfo {
+  id: string
+  name: string
+  filePath: string
+  sizeBytes: number
+  isLocal: true
+}
+
 export interface DevInspectorAPI {
   getServerPort: () => Promise<number>
+  writeClipboard?: (text: string) => Promise<void>
   clearClientLogs: () => Promise<void>
   exportSaveDialog: (defaultName: string) => Promise<string | null>
   writeExportFile: (filePath: string, content: string) => Promise<void>
@@ -18,6 +27,12 @@ export interface DevInspectorAPI {
   toggleFloatingDebugger: (enabled: boolean) => Promise<void>
   executeDbCommand: (payload: any) => Promise<any>
   onDbChunk: (callback: (data: any) => void) => () => void
+  // Gerenciamento de bancos locais SQLite
+  openDbFileDialog: () => Promise<LocalDatabaseInfo | null>
+  importLocalDb: (filePath: string) => Promise<LocalDatabaseInfo>
+  removeLocalDb: (id: string) => Promise<boolean>
+  listLocalDbs: () => Promise<LocalDatabaseInfo[]>
+  getPathForFile?: (file: File) => string
 }
 
 declare global {

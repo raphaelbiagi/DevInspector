@@ -1,5 +1,5 @@
 import React from 'react'
-import { Ban } from 'lucide-react'
+import { Ban, FileSearch } from 'lucide-react'
 import { FilterChips } from '../shared/FilterChips'
 import { SearchInput } from '../shared/SearchInput'
 import { HTTP_METHODS, STATUS_FILTERS } from '../../utils/constants'
@@ -7,7 +7,7 @@ import { useNetworkStore } from '../../stores/networkStore'
 import { MethodFilter, StatusFilter } from '../../types/network'
 
 export const NetworkToolbar: React.FC = () => {
-  const { filter, setMethodFilter, setStatusFilter, setSearch, setOnlyErrors, clearRequests } = useNetworkStore()
+  const { filter, setMethodFilter, setStatusFilter, setSearch, setSearchScope, setOnlyErrors, clearRequests } = useNetworkStore()
 
   const methodChips = HTTP_METHODS.map((m) => ({ label: m, value: m }))
   const statusChips = STATUS_FILTERS.map((s) => ({ label: s, value: s }))
@@ -47,8 +47,25 @@ export const NetworkToolbar: React.FC = () => {
           id="network-search-input"
           value={filter.search}
           onChange={setSearch}
-          placeholder="Filtrar URLs..."
+          placeholder={filter.searchScope === 'all' ? 'Buscar em tudo...' : 'Filtrar URLs...'}
         />
+
+        <button
+          className="btn btn-icon"
+          onClick={() => setSearchScope(filter.searchScope === 'all' ? 'url' : 'all')}
+          title={
+            filter.searchScope === 'all'
+              ? 'Buscando em URL, headers e body — clique para buscar só na URL'
+              : 'Buscando só na URL — clique para incluir headers e body'
+          }
+          style={{
+            opacity: filter.searchScope === 'all' ? 1 : 0.6,
+            color: filter.searchScope === 'all' ? 'var(--color-accent)' : undefined
+          }}
+        >
+          <FileSearch size={16} />
+        </button>
+
         <button className="btn btn-icon" onClick={clearRequests} title="Limpar Rede" style={{ opacity: 0.6 }}>
           <Ban size={16} />
         </button>

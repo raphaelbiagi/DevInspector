@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
+import { contextBridge, ipcRenderer, IpcRendererEvent, webUtils } from 'electron'
 
 export interface DevInspectorAPI {
   getServerPort: () => Promise<number>
@@ -21,6 +21,12 @@ export interface DevInspectorAPI {
   toggleFloatingDebugger: (enabled: boolean) => Promise<void>
   executeDbCommand: (payload: any) => Promise<any>
   onDbChunk: (callback: (data: any) => void) => () => void
+  // Gerenciamento de bancos locais SQLite
+  openDbFileDialog: () => Promise<any | null>
+  importLocalDb: (filePath: string) => Promise<any>
+  removeLocalDb: (id: string) => Promise<boolean>
+  listLocalDbs: () => Promise<any[]>
+  getPathForFile: (file: File) => string
 }
 
 function createListener(channel: string, callback: (...args: any[]) => void): () => void {
@@ -53,6 +59,18 @@ const api: DevInspectorAPI = {
   toggleFloatingDebugger: (enabled: boolean) => ipcRenderer.invoke('toggle-floating-debugger', enabled),
   executeDbCommand: (payload: any) => ipcRenderer.invoke('execute-db-command', payload),
   onDbChunk: (cb) => createListener('db-chunk', cb),
+  // Bancos locais
+  openDbFileDialog: () => ipcRenderer.invoke('open-db-file-dialog'),
+  importLocalDb: (filePath: string) => ipcRenderer.invoke('import-local-db', filePath),
+  removeLocalDb: (id: string) => ipcRenderer.invoke('remove-local-db', id),
+  listLocalDbs: () => ipcRenderer.invoke('list-local-dbs'),
+  getPathForFile: (file: File) => {
+    try {
+      return webUtils.getPathForFile(file)
+    } catch {
+      return (file as any).path || ''
+    }
+  }
 }
 
 contextBridge.exposeInMainWorld('devInspector', api)

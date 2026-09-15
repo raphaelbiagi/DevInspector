@@ -1,12 +1,35 @@
 import { create } from 'zustand'
 
-interface SavedQuery {
+export interface SavedQuery {
   name: string
   query: string
 }
 
+export interface DatabaseItem {
+  id: string
+  name: string
+  isLocal: boolean
+  filePath?: string
+  sizeBytes?: number
+}
+
+function getSavedDbPaths(): string[] {
+  try {
+    const raw = localStorage.getItem('devinspector_local_db_paths')
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
+function saveDbPaths(paths: string[]) {
+  try {
+    localStorage.setItem('devinspector_local_db_paths', JSON.stringify(paths))
+  } catch {}
+}
+
 interface DatabaseState {
-  databases: string[]
+  databases: DatabaseItem[]
   selectedDb: string | null
   tables: string[]
   selectedTable: string | null
@@ -23,7 +46,11 @@ interface DatabaseState {
   savedQueries: SavedQuery[]
 
   fetchDatabases: () => Promise<void>
-  selectDb: (db: string | null) => Promise<void>
+  restorePersistedDatabases: () => Promise<void>
+  importDatabaseFile: () => Promise<void>
+  importDatabasePath: (filePath: string) => Promise<void>
+  removeDatabase: (id: string) => Promise<void>
+  selectDb: (dbId: string | null) => Promise<void>
   selectTable: (table: string) => Promise<void>
   fetchTableData: (page: number) => Promise<void>
   executeQuery: (query: string) => Promise<void>
@@ -78,26 +105,134 @@ export const useDatabaseStore = create<DatabaseState>((set, get) => ({
     set({ savedQueries: newQueries })
   },
 
+  restorePersistedDatabases: async () => {
+    const paths = getSavedDbPaths()
+    if (!paths.length) return
+    for (const p of paths) {
+      try {
+        await window.devInspector.importLocalDb(p)
+      } catch (e) {
+        console.warn(`[databaseStore] Falha ao reabrir banco local: ${p}`, e)
+      }
+    }
+  },
+
   fetchDatabases: async () => {
     set({ isLoading: true, queryError: null })
     try {
-      const dbs = await window.devInspector.executeDbCommand({ action: 'getDatabases' })
-      set({ databases: dbs || [], isLoading: false })
+      const res = await window.devInspector.executeDbCommand({ action: 'getDatabases' })
+      let dbItems: DatabaseItem[] = []
+
+      if (res && typeof res === 'object' && ('localDbs' in res || 'remoteDbs' in res)) {
+        const localDbs: any[] = res.localDbs || []
+        const remoteDbs: string[] = res.remoteDbs || []
+
+        localDbs.forEach(l => {
+          dbItems.push({
+            id: l.id,
+            name: l.name,
+            isLocal: true,
+            filePath: l.filePath,
+            sizeBytes: l.sizeBytes
+          })
+        })
+
+        remoteDbs.forEach(r => {
+          dbItems.push({
+            id: r,
+            name: r,
+            isLocal: false
+          })
+        })
+      } else if (Array.isArray(res)) {
+        dbItems = res.map(name => ({ id: name, name, isLocal: false }))
+      }
+
+      const { selectedDb } = get()
+      let nextSelectedDb = selectedDb
+      if (selectedDb && !dbItems.some(d => d.id === selectedDb || d.name === selectedDb)) {
+        nextSelectedDb = null
+      }
+
+      set({ databases: dbItems, selectedDb: nextSelectedDb, isLoading: false })
     } catch (err: any) {
       set({ queryError: err.message, isLoading: false })
     }
   },
 
-  selectDb: async (dbName: string | null) => {
+  importDatabaseFile: async () => {
+    set({ isLoading: true, queryError: null })
+    try {
+      const result = await window.devInspector.openDbFileDialog()
+      if (result) {
+        const paths = getSavedDbPaths()
+        if (!paths.includes(result.filePath)) {
+          saveDbPaths([...paths, result.filePath])
+        }
+        await get().fetchDatabases()
+        await get().selectDb(result.id)
+      }
+      set({ isLoading: false })
+    } catch (err: any) {
+      set({ queryError: err.message, isLoading: false })
+    }
+  },
+
+  importDatabasePath: async (filePath: string) => {
+    set({ isLoading: true, queryError: null })
+    try {
+      const result = await window.devInspector.importLocalDb(filePath)
+      if (result) {
+        const paths = getSavedDbPaths()
+        if (!paths.includes(result.filePath)) {
+          saveDbPaths([...paths, result.filePath])
+        }
+        await get().fetchDatabases()
+        await get().selectDb(result.id)
+      }
+      set({ isLoading: false })
+    } catch (err: any) {
+      set({ queryError: err.message, isLoading: false })
+    }
+  },
+
+  removeDatabase: async (id: string) => {
+    const { databases, selectedDb } = get()
+    const target = databases.find(d => d.id === id)
+    if (!target) return
+
+    if (target.isLocal) {
+      await window.devInspector.removeLocalDb(id)
+      if (target.filePath) {
+        const paths = getSavedDbPaths().filter(p => p !== target.filePath)
+        saveDbPaths(paths)
+      }
+    }
+
+    if (selectedDb === id) {
+      set({
+        selectedDb: null,
+        tables: [],
+        selectedTable: null,
+        tableData: null,
+        queryResult: null,
+        tableTotalRows: 0
+      })
+    }
+
+    await get().fetchDatabases()
+  },
+
+  selectDb: async (dbId: string | null) => {
     set({ 
-      selectedDb: dbName, tables: [], selectedTable: null, tableData: null, 
-      queryResult: null, isLoading: !!dbName, queryError: null,
+      selectedDb: dbId, tables: [], selectedTable: null, tableData: null, 
+      queryResult: null, isLoading: !!dbId, queryError: null,
       tableTotalRows: 0, tableCurrentPage: 1
     })
-    if (!dbName) return
+    if (!dbId) return
     
     try {
-      const tables = await window.devInspector.executeDbCommand({ action: 'getTables', dbName })
+      const tables = await window.devInspector.executeDbCommand({ action: 'getTables', dbName: dbId })
       set({ tables: tables || [], isLoading: false })
     } catch (err: any) {
       set({ queryError: err.message, isLoading: false })
@@ -118,7 +253,7 @@ export const useDatabaseStore = create<DatabaseState>((set, get) => ({
       const cRes = await window.devInspector.executeDbCommand({
         action: 'executeSql',
         dbName: selectedDb,
-        query: `SELECT COUNT(*) as total FROM ${tableName}`
+        query: `SELECT COUNT(*) as total FROM "${tableName}"`
       })
       unsubCount()
       const countResult = (cRes && cRes.streamed) ? countData : cRes
@@ -150,7 +285,7 @@ export const useDatabaseStore = create<DatabaseState>((set, get) => ({
       const res = await window.devInspector.executeDbCommand({
         action: 'executeSql',
         dbName: selectedDb,
-        query: `SELECT * FROM ${selectedTable} LIMIT ${tablePageSize} OFFSET ${offset}`
+        query: `SELECT * FROM "${selectedTable}" LIMIT ${tablePageSize} OFFSET ${offset}`
       })
       unsub()
       const result = (res && res.streamed) ? pageData : res
@@ -184,7 +319,6 @@ export const useDatabaseStore = create<DatabaseState>((set, get) => ({
             if (currentResult) {
               return { queryResult: { ...currentResult, rows: [...currentResult.rows, ...chunk] } }
             } else {
-              // Initialize on first chunk
               return { queryResult: { columns: Object.keys(chunk[0]), rows: chunk } }
             }
           })
@@ -205,13 +339,11 @@ export const useDatabaseStore = create<DatabaseState>((set, get) => ({
       unsubChunk()
 
       if (result && result.streamed) {
-        // Chunks were already handled progressively
         set(state => {
           if (!state.queryResult) return { queryResult: { columns: [], rows: [] }, isLoading: false }
           return { isLoading: false }
         })
       } else {
-        // Fallback for non-streamed results (or mutations)
         if (Array.isArray(result) && result.length > 0) {
           set({ queryResult: { columns: Object.keys(result[0]), rows: result }, isLoading: false })
         } else if (Array.isArray(result)) {

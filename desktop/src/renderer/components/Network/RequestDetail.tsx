@@ -5,6 +5,9 @@ import { JsonViewer } from '../shared/JsonViewer'
 import { formatBytes, formatDuration, getMethodColor, getStatusColor, generateCurlCommand } from '../../utils/formatters'
 import { X, Copy, Terminal } from 'lucide-react'
 import { useNetworkStore } from '../../stores/networkStore'
+import { useTimelineStore } from '../../stores/timelineStore'
+import { RequestDiffView } from '../RequestDiff'
+import { extractGraphQLInfo } from '../../utils/graphql'
 
 interface RequestDetailProps {
   request: NetworkRequest
@@ -15,6 +18,9 @@ export const RequestDetail: React.FC<RequestDetailProps> = ({ request, onClose }
   const [activeTab, setActiveTab] = useState('headers')
   const [loadingContent, setLoadingContent] = useState(false)
   const panelWidth = useNetworkStore(state => state.panelWidth)
+  // Subscreve ao Map de diffs para re-renderizar quando o diff desta request chegar
+  const diff = useTimelineStore(state => state.diffs.get(request.id) ?? null)
+  const graphql = React.useMemo(() => extractGraphQLInfo(request), [request])
 
   React.useEffect(() => {
     setLoadingContent(true)
@@ -23,6 +29,12 @@ export const RequestDetail: React.FC<RequestDetailProps> = ({ request, onClose }
     }, 10)
     return () => clearTimeout(timer)
   }, [request.id, activeTab])
+
+  // Abas condicionais: ao trocar para uma request que não as tem, volta para Headers
+  React.useEffect(() => {
+    if (activeTab === 'diff' && !diff) setActiveTab('headers')
+    if (activeTab === 'graphql' && !graphql) setActiveTab('headers')
+  }, [activeTab, diff, graphql])
 
   const renderHeaders = (headers: Record<string, string>) => {
     if (!headers || Object.keys(headers).length === 0) {
@@ -49,7 +61,7 @@ export const RequestDetail: React.FC<RequestDetailProps> = ({ request, onClose }
         const parsed = JSON.parse(body)
         return <JsonViewer data={parsed} />
       } catch {
-        return <div style={{ whiteSpace: 'pre-wrap', fontFamily: 'var(--font-mono)' }}>{body}</div>
+        return <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', fontFamily: 'var(--font-mono)' }}>{body}</div>
       }
     }
     return <JsonViewer data={body} />
@@ -143,7 +155,9 @@ export const RequestDetail: React.FC<RequestDetailProps> = ({ request, onClose }
           { id: 'headers', label: 'Headers' },
           { id: 'request', label: 'Request' },
           { id: 'response', label: 'Response' },
-          { id: 'timing', label: 'Timing' }
+          { id: 'timing', label: 'Timing' },
+          ...(graphql ? [{ id: 'graphql', label: 'GraphQL' }] : []),
+          ...(diff ? [{ id: 'diff', label: 'Diff' }] : [])
         ]}
         activeTab={activeTab}
         onChange={setActiveTab}
@@ -220,6 +234,62 @@ export const RequestDetail: React.FC<RequestDetailProps> = ({ request, onClose }
                 </div>
               </div>
             )}
+          </>
+        )}
+
+        {activeTab === 'graphql' && graphql && (
+          <>
+            {graphql.errors && graphql.errors.length > 0 && (
+              <>
+                <div className="detail-section-title" style={{ color: 'var(--color-error)' }}>
+                  Erros GraphQL (a resposta veio com status {request.statusCode})
+                </div>
+                <div className="detail-section">
+                  {graphql.errors.map((message, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: 12,
+                        color: 'var(--color-error-bright)',
+                        padding: '4px 0',
+                        whiteSpace: 'pre-wrap'
+                      }}
+                    >
+                      {message}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            <div className="detail-section-title">Operação</div>
+            <div className="detail-section">
+              <div className="detail-kv">
+                <span className="detail-kv-key">Nome:</span>
+                <span className="detail-kv-value">{graphql.operationName}</span>
+              </div>
+              <div className="detail-kv">
+                <span className="detail-kv-key">Tipo:</span>
+                <span className="detail-kv-value">{graphql.operationType}</span>
+              </div>
+            </div>
+
+            <div className="detail-section-title">Variables</div>
+            {graphql.variables && Object.keys(graphql.variables).length > 0 ? (
+              <JsonViewer data={graphql.variables} />
+            ) : (
+              <div style={{ color: 'var(--color-text-muted)', fontStyle: 'italic' }}>
+                Nenhuma variável
+              </div>
+            )}
+          </>
+        )}
+
+        {activeTab === 'diff' && diff && (
+          <>
+            <div className="detail-section-title">Comparação com a chamada anterior</div>
+            <RequestDiffView diff={diff} />
           </>
         )}
       </div>

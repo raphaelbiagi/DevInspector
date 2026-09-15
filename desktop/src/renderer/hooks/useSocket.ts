@@ -51,7 +51,7 @@ export function useSocketListener() {
     const unsubAnomaly = window.devInspector.onDevinspectorAnomaly((data: AnomalyPayload) => {
       useTimelineStore.getState().addAnomaly(data)
       window.dispatchEvent(new CustomEvent('devinspector:toast', { 
-        detail: { type: 'warning', title: 'Anomalia Detectada', message: data.message } 
+        detail: { type: 'warning', title: 'Anomalia Detectada', message: data.description }
       }))
     })
 

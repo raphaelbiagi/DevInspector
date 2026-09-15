@@ -352,8 +352,11 @@ export class DevToolsServer extends EventEmitter {
     })
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     if (this.pingIntervalId) clearInterval(this.pingIntervalId)
+    // Fecha a sessão em curso: sem isso, encerrar o desktop com o app ainda
+    // conectado deixaria os eventos gravados fora do índice de sessões.
+    await this.sessionStore.endSession()
     this.io?.close()
     this.httpServer?.close()
     this.io = null

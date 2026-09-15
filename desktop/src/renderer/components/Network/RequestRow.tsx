@@ -1,8 +1,10 @@
 import React from 'react'
 import { NetworkRequest } from '../../types/network'
 import { getMethodColor, getStatusColor, formatDuration, formatBytes, truncateUrl } from '../../utils/formatters'
-import { Pin } from 'lucide-react'
+import { Pin, GitCompare } from 'lucide-react'
 import { useNetworkStore } from '../../stores/networkStore'
+import { useTimelineStore } from '../../stores/timelineStore'
+import { extractGraphQLInfo } from '../../utils/graphql'
 
 interface RequestRowProps {
   request: NetworkRequest
@@ -11,10 +13,16 @@ interface RequestRowProps {
 }
 
 export const RequestRow: React.FC<RequestRowProps> = ({ request, isSelected, onClick }) => {
-  const isError = request.status === 'error' || (request.statusCode !== null && request.statusCode >= 400)
+  const graphql = React.useMemo(() => extractGraphQLInfo(request), [request])
+  // GraphQL responde 200 mesmo em falha — o erro vive no corpo
+  const isError =
+    request.status === 'error' ||
+    (request.statusCode !== null && request.statusCode >= 400) ||
+    !!graphql?.errors?.length
   const isPinned = useNetworkStore(state => state.pinnedIds.includes(request.id))
   const togglePin = useNetworkStore(state => state.togglePin)
-  
+  const hasDiff = useTimelineStore(state => state.diffs.has(request.id))
+
   return (
     <div 
       className={`request-row ${isSelected ? 'selected' : ''} ${isError ? 'error' : ''} ${request.status === 'pending' ? 'pending' : ''}`}
@@ -51,8 +59,33 @@ export const RequestRow: React.FC<RequestRowProps> = ({ request, isSelected, onC
         >
           <Pin size={12} />
         </button>
+        {hasDiff && (
+          <span
+            title="Difere da chamada anterior desta rota"
+            style={{ display: 'flex', flexShrink: 0, color: 'var(--color-warning)', opacity: 0.8 }}
+          >
+            <GitCompare size={12} />
+          </span>
+        )}
+        {graphql && (
+          <span
+            title={`GraphQL ${graphql.operationType}`}
+            style={{
+              flexShrink: 0,
+              fontSize: 9,
+              fontWeight: 700,
+              letterSpacing: '0.5px',
+              padding: '1px 4px',
+              borderRadius: 3,
+              color: '#E535AB',
+              border: '1px solid rgba(229, 53, 171, 0.4)'
+            }}
+          >
+            GQL
+          </span>
+        )}
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {truncateUrl(request.url, 100)}
+          {graphql ? graphql.operationName : truncateUrl(request.url, 100)}
         </span>
       </div>
       

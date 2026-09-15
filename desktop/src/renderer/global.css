@@ -781,14 +781,18 @@ code, pre, .mono {
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.6;
+  word-break: break-all;
+  white-space: pre-wrap;
 }
 
 .json-key {
   color: #9cdcfe;
+  word-break: break-all;
 }
 
 .json-string {
   color: #ce9178;
+  word-break: break-all;
 }
 
 .json-number {
@@ -1036,5 +1040,9 @@ code, pre, .mono {
 
 .timeline-panel {
   background: var(--bg-primary);
+}
+
+.export-menu-item:hover {
+  background: var(--bg-hover, var(--bg-elevated));
 }
 

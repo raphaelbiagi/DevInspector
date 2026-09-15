@@ -8,15 +8,50 @@ interface SidebarProps {
   activeTab: TabId
   onTabChange: (tab: TabId) => void
   onClear: () => void
-  onExport: () => void
+  onExport: (format: 'json' | 'har') => void
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ 
-  activeTab, 
-  onTabChange, 
+const exportItemStyle: React.CSSProperties = {
+  display: 'block',
+  width: '100%',
+  textAlign: 'left',
+  padding: '10px 14px',
+  background: 'transparent',
+  border: 'none',
+  color: 'var(--color-text)',
+  cursor: 'pointer',
+  fontSize: 13
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({
+  activeTab,
+  onTabChange,
   onClear,
   onExport
 }) => {
+  const [exportMenuOpen, setExportMenuOpen] = React.useState(false)
+  const exportMenuRef = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    if (!exportMenuOpen) return
+
+    const handlePointerDown = (e: MouseEvent) => {
+      if (!exportMenuRef.current?.contains(e.target as Node)) {
+        setExportMenuOpen(false)
+      }
+    }
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setExportMenuOpen(false)
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [exportMenuOpen])
+
   const errorCount = useConsoleStore((state) => state.getErrorCount())
   const anomalyCount = useTimelineStore((state) =>
     state.items.filter(i => i.type === 'anomaly').length
@@ -87,15 +122,54 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
 
-        <div className="tooltip-wrapper">
-          <button 
+        <div className="tooltip-wrapper" style={{ position: 'relative' }} ref={exportMenuRef}>
+          <button
             title="Exportar Sessão"
-            className="sidebar-btn" 
-            onClick={onExport}
-            style={{ border: 'none', background: 'transparent', padding: 12, cursor: 'pointer', opacity: 0.5, transition: 'all 0.2s' }}
+            className="sidebar-btn"
+            onClick={() => setExportMenuOpen(open => !open)}
+            style={{ border: 'none', background: exportMenuOpen ? 'var(--bg-active)' : 'transparent', padding: 12, cursor: 'pointer', opacity: exportMenuOpen ? 1 : 0.5, borderRadius: 'var(--radius-md)', transition: 'all 0.2s' }}
           >
             <Download size={20} color="var(--color-text)" />
           </button>
+
+          {exportMenuOpen && (
+            <div
+              style={{
+                position: 'absolute',
+                bottom: 0,
+                left: '100%',
+                marginLeft: 8,
+                zIndex: 1000,
+                minWidth: 220,
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-color)',
+                borderRadius: 'var(--radius-md)',
+                boxShadow: 'var(--shadow-lg)',
+                overflow: 'hidden'
+              }}
+            >
+              <button
+                className="export-menu-item"
+                onClick={() => { setExportMenuOpen(false); onExport('json') }}
+                style={exportItemStyle}
+              >
+                <div style={{ fontWeight: 600 }}>Exportar JSON</div>
+                <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
+                  Rede, console e anomalias
+                </div>
+              </button>
+              <button
+                className="export-menu-item"
+                onClick={() => { setExportMenuOpen(false); onExport('har') }}
+                style={{ ...exportItemStyle, borderTop: '1px solid var(--border-color)' }}
+              >
+                <div style={{ fontWeight: 600 }}>Exportar HAR</div>
+                <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
+                  Abre no Chrome DevTools, Insomnia, Postman
+                </div>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

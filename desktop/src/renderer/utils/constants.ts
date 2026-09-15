@@ -1,3 +1,7 @@
+import packageJson from '../../../package.json'
+
+export const APP_VERSION = packageJson.version
+
 export const MAX_NETWORK_LOGS = 2000
 export const MAX_CONSOLE_LOGS = 5000
 export const MAX_BODY_PREVIEW_LENGTH = 500

@@ -34,6 +34,8 @@ interface TimelineState {
 }
 
 const MAX_TIMELINE_ITEMS = 5000
+const MAX_ANOMALIES = 1000
+const MAX_DIFFS = 1000
 
 export const useTimelineStore = create<TimelineState>((set, get) => ({
   items: [],
@@ -53,7 +55,10 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
 
   addAnomaly: (anomaly) => {
     set((state) => {
-      const anomalies = [...state.anomalies, anomaly]
+      let anomalies = [...state.anomalies, anomaly]
+      if (anomalies.length > MAX_ANOMALIES) {
+        anomalies = anomalies.slice(anomalies.length - MAX_ANOMALIES)
+      }
       // Também adiciona como item na timeline
       const item: TimelineItem = {
         id: anomaly.id,
@@ -73,6 +78,11 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
   addDiff: (diff) => {
     set((state) => {
       const diffs = new Map(state.diffs)
+      // FIFO: descarta o diff mais antigo (Map preserva ordem de inserção)
+      if (!diffs.has(diff.requestId) && diffs.size >= MAX_DIFFS) {
+        const oldestKey = diffs.keys().next().value
+        if (oldestKey !== undefined) diffs.delete(oldestKey)
+      }
       diffs.set(diff.requestId, diff)
       return { diffs }
     })

@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, shell, clipboard } from 'electron'
 import { join } from 'path'
 import { DevToolsServer } from './wsServer'
 import { DiscoveryServer } from './discovery-server'
+import { localDbManager } from './localDbManager'
 
 const DEFAULT_PORT = 8347
 
@@ -119,9 +120,14 @@ function setupIPC(): void {
   ipcMain.handle('export-save-dialog', async (_event, defaultName: string) => {
     if (!mainWindow) return null
     const { dialog } = await import('electron')
+    // O filtro acompanha a extensão pedida para que o export HAR não seja
+    // forçado a .json pelo diálogo do sistema.
+    const isHar = defaultName.toLowerCase().endsWith('.har')
     const result = await dialog.showSaveDialog(mainWindow, {
       defaultPath: defaultName,
-      filters: [{ name: 'JSON', extensions: ['json'] }]
+      filters: isHar
+        ? [{ name: 'HTTP Archive', extensions: ['har'] }]
+        : [{ name: 'JSON', extensions: ['json'] }]
     })
     return result.filePath ?? null
   })
@@ -140,7 +146,61 @@ function setupIPC(): void {
     return (await devToolsServer?.getSessionStore().loadSession(sessionId)) ?? null
   })
 
+  // IPC handlers para Banco de Dados Local (SQLite)
+  ipcMain.handle('open-db-file-dialog', async () => {
+    if (!mainWindow) return null
+    const { dialog } = await import('electron')
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Selecionar Banco de Dados SQLite',
+      properties: ['openFile'],
+      filters: [
+        { name: 'Bancos SQLite (*.db, *.sqlite, *.sqlite3, *.db3)', extensions: ['db', 'sqlite', 'sqlite3', 'db3', 'bin'] },
+        { name: 'Todos os Arquivos', extensions: ['*'] }
+      ]
+    })
+    if (result.canceled || !result.filePaths.length) return null
+    const filePath = result.filePaths[0]
+    return localDbManager.importDatabase(filePath)
+  })
+
+  ipcMain.handle('import-local-db', async (_event, filePath: string) => {
+    return localDbManager.importDatabase(filePath)
+  })
+
+  ipcMain.handle('remove-local-db', async (_event, id: string) => {
+    return localDbManager.closeDatabase(id)
+  })
+
+  ipcMain.handle('list-local-dbs', async () => {
+    return localDbManager.listDatabases()
+  })
+
   ipcMain.handle('execute-db-command', async (_event, payload: any) => {
+    if (payload.action === 'getDatabases') {
+      const localDbs = localDbManager.listDatabases()
+      let remoteDbs: string[] = []
+      if (devToolsServer) {
+        try {
+          const res = await devToolsServer.executeDbCommand({ action: 'getDatabases' })
+          if (Array.isArray(res)) {
+            remoteDbs = res
+          }
+        } catch {
+          // Device not connected or error, ignore gracefully
+        }
+      }
+      return {
+        localDbs,
+        remoteDbs
+      }
+    }
+
+    // Check if targeting a local database
+    const dbName = payload.dbName || ''
+    if (localDbManager.hasDatabase(dbName)) {
+      return localDbManager.executeCommand(payload)
+    }
+
     if (!devToolsServer) throw new Error('Servidor não inicializado')
     return await devToolsServer.executeDbCommand(payload)
   })
@@ -158,8 +218,10 @@ app.whenReady().then(() => {
   })
 })
 
-app.on('window-all-closed', () => {
-  devToolsServer?.stop()
+app.on('window-all-closed', async () => {
+  localDbManager.closeAll()
+  // Aguarda o flush da sessão em disco antes de encerrar o processo
+  await devToolsServer?.stop()
   discoveryServer?.stop()
   if (process.platform !== 'darwin') {
     app.quit()

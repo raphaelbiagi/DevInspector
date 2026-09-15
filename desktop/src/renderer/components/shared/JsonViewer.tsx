@@ -211,14 +211,18 @@ export const JsonViewer: React.FC<JsonViewerProps> = ({
           return (
             <div
               key={virtualItem.key}
+              ref={virtualizer.measureElement}
+              data-index={virtualItem.index}
               style={{
                 position: 'absolute',
                 top: 0,
                 left: 0,
                 width: '100%',
-                height: `${virtualItem.size}px`,
                 transform: `translateY(${virtualItem.start}px)`,
-                paddingLeft: indent
+                paddingLeft: indent,
+                boxSizing: 'border-box',
+                wordBreak: 'break-all',
+                whiteSpace: 'pre-wrap'
               }}
               onContextMenu={(e) => handleContextMenu(e, row.value)}
             >
@@ -260,6 +264,8 @@ export const JsonViewer: React.FC<JsonViewerProps> = ({
 }
 
 const JsonRow = React.memo(({ row, onToggle }: { row: FlatRow, onToggle: () => void }) => {
+  const [expandedString, setExpandedString] = useState(false)
+
   if (row.type === 'primitive') {
     if (row.kind === 'null') {
       return (
@@ -281,11 +287,33 @@ const JsonRow = React.memo(({ row, onToggle }: { row: FlatRow, onToggle: () => v
     }
     if (row.kind === 'string') {
       const str = row.value as string
+      const isLong = str.length > 300
+      const displayStr = isLong && !expandedString ? str.substring(0, 300) + '...' : str
       return (
         <>
           {row.keyName !== undefined && <span className="json-key">"{row.keyName}"</span>}
           {row.keyName !== undefined && <span>: </span>}
-          <span className="json-string">"{str.length > 300 ? str.substring(0, 300) + '...' : str}"</span>
+          <span className="json-string">"{displayStr}"</span>
+          {isLong && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setExpandedString((prev) => !prev)
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--color-accent, #61afef)',
+                cursor: 'pointer',
+                fontSize: 10,
+                marginLeft: 6,
+                padding: '0 2px',
+                textDecoration: 'underline'
+              }}
+            >
+              {expandedString ? 'ver menos' : 'ver tudo'}
+            </button>
+          )}
         </>
       )
     }

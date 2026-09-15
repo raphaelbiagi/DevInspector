@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { AlertCircle, X } from 'lucide-react'
+import { AlertCircle, CheckCircle2, X } from 'lucide-react'
 import { Header } from './components/Layout/Header'
 import { Sidebar } from './components/Layout/Sidebar'
 import { StatusBar } from './components/Layout/StatusBar'
@@ -15,6 +15,19 @@ import { useConnectionStore } from './stores/connectionStore'
 import { TAB_NETWORK, TAB_CONSOLE, TAB_INSIGHTS, TAB_DATABASE, TabId } from './utils/constants'
 import { DatabasePanel } from './components/Database/DatabasePanel'
 import { CommandPalette } from './components/shared/CommandPalette'
+import type { ToastDetail } from './utils/notify'
+
+const TOAST_COLOR: Record<ToastDetail['type'], string> = {
+  success: 'var(--color-success)',
+  warning: 'var(--color-warning)',
+  error: 'var(--color-error)'
+}
+
+const TOAST_GLOW: Record<ToastDetail['type'], string> = {
+  success: 'rgba(16, 185, 129, 0.2)',
+  warning: 'rgba(245, 158, 11, 0.2)',
+  error: 'rgba(239, 68, 68, 0.2)'
+}
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabId>(TAB_NETWORK)
@@ -23,7 +36,7 @@ export const App: React.FC = () => {
   const clearConsole = useConsoleStore(state => state.clearLogs)
   const clearInsights = useTimelineStore(state => state.clearAll)
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false)
-  const [toast, setToast] = useState<{ title: string, message: string } | null>(null)
+  const [toast, setToast] = useState<ToastDetail | null>(null)
 
   // Initialize IPC listeners
   useSocketListener()
@@ -85,7 +98,7 @@ export const App: React.FC = () => {
       
       <div className="app-main" style={{ position: 'relative' }}>
         <Header />
-        
+
         <div className="app-content">
           {activeTab === TAB_NETWORK && (
             <div style={{ height: '100%' }}>
@@ -110,9 +123,10 @@ export const App: React.FC = () => {
               <DatabasePanel />
             </div>
           )}
+
         </div>
 
-        {!connected && (
+        {!connected && activeTab !== TAB_DATABASE && (
           <div className="loading-overlay animate-fade-in">
             <div className="loading-card">
               <svg className="lucide-spinner animate-spin" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -131,12 +145,15 @@ export const App: React.FC = () => {
         {toast && (
           <div className="animate-slide-in" style={{
             position: 'absolute', top: 16, right: 16, zIndex: 9999,
-            background: 'var(--bg-surface)', border: '1px solid var(--color-warning)',
-            boxShadow: 'var(--shadow-lg), 0 0 20px rgba(245, 158, 11, 0.2)',
+            background: 'var(--bg-surface)', border: `1px solid ${TOAST_COLOR[toast.type] ?? 'var(--color-warning)'}`,
+            boxShadow: `var(--shadow-lg), 0 0 20px ${TOAST_GLOW[toast.type] ?? 'rgba(245, 158, 11, 0.2)'}`,
             borderRadius: 'var(--radius-md)', padding: '12px 16px',
             display: 'flex', gap: 12, alignItems: 'flex-start', maxWidth: 350
           }}>
-            <AlertCircle size={18} style={{ color: 'var(--color-warning)', marginTop: 2, flexShrink: 0 }} />
+            {toast.type === 'success'
+              ? <CheckCircle2 size={18} style={{ color: TOAST_COLOR.success, marginTop: 2, flexShrink: 0 }} />
+              : <AlertCircle size={18} style={{ color: TOAST_COLOR[toast.type] ?? 'var(--color-warning)', marginTop: 2, flexShrink: 0 }} />
+            }
             <div>
               <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--color-text-bright)' }}>{toast.title}</div>
               <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 4 }}>{toast.message}</div>

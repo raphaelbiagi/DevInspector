@@ -10,6 +10,8 @@ import type {
   NetworkStats
 } from '../types/network'
 import { MAX_NETWORK_LOGS } from '../utils/constants'
+import { buildSearchMatcher, type SearchScope } from '../utils/searchMatcher'
+import { hasGraphQLErrors } from '../utils/graphql'
 
 interface NetworkState {
   requests: Map<string, NetworkRequest>
@@ -17,6 +19,7 @@ interface NetworkState {
     method: MethodFilter
     status: StatusFilter
     search: string
+    searchScope: SearchScope
     onlyErrors: boolean
   }
   selectedId: string | null
@@ -31,6 +34,7 @@ interface NetworkState {
   setMethodFilter: (method: MethodFilter) => void
   setStatusFilter: (status: StatusFilter) => void
   setSearch: (search: string) => void
+  setSearchScope: (scope: SearchScope) => void
   setOnlyErrors: (onlyErrors: boolean) => void
   selectRequest: (id: string | null) => void
   togglePin: (id: string) => void
@@ -51,6 +55,7 @@ export const useNetworkStore = create<NetworkState>()(
         method: 'ALL',
         status: 'ALL',
         search: '',
+        searchScope: 'url',
         onlyErrors: false
       },
       selectedId: null,
@@ -142,6 +147,9 @@ export const useNetworkStore = create<NetworkState>()(
   setSearch: (search) =>
     set((state) => ({ filter: { ...state.filter, search } })),
 
+  setSearchScope: (searchScope) =>
+    set((state) => ({ filter: { ...state.filter, searchScope } })),
+
   setOnlyErrors: (onlyErrors) =>
     set((state) => ({ filter: { ...state.filter, onlyErrors } })),
 
@@ -195,13 +203,17 @@ export const useNetworkStore = create<NetworkState>()(
 
     if (filter.onlyErrors) {
       result = result.filter(
-        (r) => r.status === 'error' || (r.statusCode !== null && r.statusCode >= 400)
+        (r) =>
+          r.status === 'error' ||
+          (r.statusCode !== null && r.statusCode >= 400) ||
+          // GraphQL sinaliza falha no corpo, com status 200
+          hasGraphQLErrors(r)
       )
     }
 
     if (filter.search) {
-      const s = filter.search.toLowerCase()
-      result = result.filter((r) => r.url.toLowerCase().includes(s))
+      const matches = buildSearchMatcher(filter.search, filter.searchScope)
+      result = result.filter(matches)
     }
 
     const pinned: NetworkRequest[] = []
@@ -222,7 +234,10 @@ export const useNetworkStore = create<NetworkState>()(
     const requests = Array.from(get().requests.values())
     const completed = requests.filter((r) => r.status === 'completed')
     const failed = requests.filter(
-      (r) => r.status === 'error' || (r.statusCode !== null && r.statusCode >= 400)
+      (r) =>
+        r.status === 'error' ||
+        (r.statusCode !== null && r.statusCode >= 400) ||
+        hasGraphQLErrors(r)
     )
     const pending = requests.filter((r) => r.status === 'pending')
     const durations = completed
