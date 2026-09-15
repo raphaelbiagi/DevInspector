@@ -1,0 +1,5 @@
+{
+  "devDependencies": {
+    "rn-devtools-client": "github:raphaelbiagi/DevInspector#sdk-package"
+  }
+}
