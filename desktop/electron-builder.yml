@@ -2,9 +2,11 @@ appId: com.devinspector.desktop
 productName: DevInspector
 directories:
   output: dist
+  buildResources: build
 files:
   - out/**/*
 win:
+  icon: build/icon.ico
   target:
     - target: nsis
       arch:

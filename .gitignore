@@ -11,6 +11,7 @@ build/
 dist/
 desktop/dist/
 desktop/out/
+!desktop/build/
 
 # IDE / Editor logs and settings
 .idea/

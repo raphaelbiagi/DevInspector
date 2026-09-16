@@ -27,8 +27,16 @@ app.whenReady().then(() => {
         const image = await win.webContents.capturePage();
         const buildDir = path.join(__dirname, 'build');
         if (!fs.existsSync(buildDir)) fs.mkdirSync(buildDir);
-        fs.writeFileSync(path.join(buildDir, 'icon.png'), image.toPNG());
-        console.log('Icon generated successfully!');
+        const pngPath = path.join(buildDir, 'icon.png');
+        const icoPath = path.join(buildDir, 'icon.ico');
+        fs.writeFileSync(pngPath, image.toPNG());
+        
+        const pngToIco = require('png-to-ico');
+        const fn = pngToIco.default || pngToIco;
+        const icoBuffer = await fn(pngPath);
+        fs.writeFileSync(icoPath, icoBuffer);
+        
+        console.log('Icon PNG and ICO generated successfully!');
       } catch (err) {
         console.error('Error generating icon:', err);
       } finally {
