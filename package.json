@@ -1,0 +1,43 @@
+{
+  "name": "rn-devtools-client",
+  "version": "1.0.0",
+  "description": "DevInspector client SDK for React Native — sends network and console logs to the desktop DevTools",
+  "license": "MIT",
+  "keywords": [
+    "react-native",
+    "expo",
+    "devtools",
+    "debugger",
+    "network-inspector",
+    "sqlite"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "react-native": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "react-native": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-native": {
+      "optional": true
+    }
+  }
+}
