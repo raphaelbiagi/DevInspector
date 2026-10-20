@@ -27,6 +27,14 @@ export interface DevInspectorAPI {
   removeLocalDb: (id: string) => Promise<boolean>
   listLocalDbs: () => Promise<any[]>
   getPathForFile: (file: File) => string
+  // Logcat
+  logcatListDevices: () => Promise<{ devices: any[]; error: string | null }>
+  logcatListPackages: (serial: string) => Promise<string[]>
+  logcatStart: (options: { serial: string; packageName?: string | null }) => Promise<any>
+  logcatStop: () => Promise<any>
+  logcatGetStatus: () => Promise<any>
+  onLogcatEntries: (callback: (data: any[]) => void) => () => void
+  onLogcatStatus: (callback: (data: any) => void) => () => void
 }
 
 function createListener(channel: string, callback: (...args: any[]) => void): () => void {
@@ -70,7 +78,15 @@ const api: DevInspectorAPI = {
     } catch {
       return (file as any).path || ''
     }
-  }
+  },
+  // Logcat
+  logcatListDevices: () => ipcRenderer.invoke('logcat-list-devices'),
+  logcatListPackages: (serial: string) => ipcRenderer.invoke('logcat-list-packages', serial),
+  logcatStart: (options) => ipcRenderer.invoke('logcat-start', options),
+  logcatStop: () => ipcRenderer.invoke('logcat-stop'),
+  logcatGetStatus: () => ipcRenderer.invoke('logcat-get-status'),
+  onLogcatEntries: (cb) => createListener('logcat:entries', cb),
+  onLogcatStatus: (cb) => createListener('logcat:status', cb)
 }
 
 contextBridge.exposeInMainWorld('devInspector', api)

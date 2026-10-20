@@ -4,6 +4,7 @@ interface FilterChip {
   label: string
   value: string
   count?: number
+  title?: string
 }
 
 interface FilterChipsProps {
@@ -31,6 +32,7 @@ export const FilterChips: React.FC<FilterChipsProps> = ({
           key={chip.value}
           className={`chip ${isActive(chip.value) ? 'active' : ''}`}
           onClick={() => onChange(chip.value)}
+          title={chip.title}
         >
           {chip.label}
           {chip.count !== undefined && chip.count > 0 && (

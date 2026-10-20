@@ -13,6 +13,7 @@ export interface DeviceDetails {
   osVersion: string
   deviceName: string
   reactNativeVersion: string
+  packageName?: string
 }
 
 function normalizePlatform(): DeviceDetails['platform'] {
@@ -68,12 +69,30 @@ export function getDeviceDetails(): DeviceDetails {
     platformConstants?.Brand ??
     `${normalizePlatform()} device`
 
+  const packageName = readPackageName(constants, expoConfig)
+
   return {
     appName: expoConfig?.name ?? 'React Native App',
     appVersion: expoConfig?.version ?? 'unknown',
     platform: normalizePlatform(),
     osVersion,
     deviceName,
-    reactNativeVersion
+    reactNativeVersion,
+    ...(packageName ? { packageName } : {})
   }
+}
+
+/**
+ * Identificador do processo nativo, usado pelo desktop para filtrar o logcat.
+ * No Expo Go o processo é o próprio Expo Go, não o `android.package` do app.json.
+ * Em bare React Native sem expo-constants não há fonte em JS — o desktop deixa
+ * o usuário escolher o pacote manualmente.
+ */
+function readPackageName(constants: Record<string, any> | null, expoConfig: Record<string, any> | null): string | undefined {
+  if (constants?.executionEnvironment === 'storeClient') {
+    return Platform.OS === 'android' ? 'host.exp.exponent' : 'host.exp.Exponent'
+  }
+  if (Platform.OS === 'android') return expoConfig?.android?.package
+  if (Platform.OS === 'ios') return expoConfig?.ios?.bundleIdentifier
+  return undefined
 }

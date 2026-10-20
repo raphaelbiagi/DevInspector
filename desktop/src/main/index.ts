@@ -3,6 +3,7 @@ import { join } from 'path'
 import { DevToolsServer } from './wsServer'
 import { DiscoveryServer } from './discovery-server'
 import { localDbManager } from './localDbManager'
+import { logcatManager, LogcatStartOptions } from './logcatManager'
 
 const DEFAULT_PORT = 8347
 
@@ -211,6 +212,23 @@ function setupIPC(): void {
     if (!devToolsServer) throw new Error('Servidor não inicializado')
     return await devToolsServer.executeDbCommand(payload)
   })
+
+  // Logcat (Android, via adb do desktop)
+  ipcMain.handle('logcat-list-devices', () => logcatManager.listDevices())
+  ipcMain.handle('logcat-list-packages', (_event, serial: string) => logcatManager.listPackages(serial))
+  ipcMain.handle('logcat-start', (_event, options: LogcatStartOptions) => logcatManager.start(options))
+  ipcMain.handle('logcat-stop', () => {
+    logcatManager.stop()
+    return logcatManager.getStatus()
+  })
+  ipcMain.handle('logcat-get-status', () => logcatManager.getStatus())
+
+  logcatManager.on('entries', (entries) => {
+    mainWindow?.webContents.send('logcat:entries', entries)
+  })
+  logcatManager.on('status', (status) => {
+    mainWindow?.webContents.send('logcat:status', status)
+  })
 }
 
 app.whenReady().then(() => {
@@ -227,6 +245,7 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', async () => {
   localDbManager.closeAll()
+  logcatManager.stop()
   // Aguarda o flush da sessão em disco antes de encerrar o processo
   await devToolsServer?.stop()
   discoveryServer?.stop()

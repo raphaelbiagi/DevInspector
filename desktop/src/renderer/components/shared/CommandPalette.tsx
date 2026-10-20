@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Search, Terminal, Activity, Database, Network, Trash2, X } from 'lucide-react'
-import { TAB_NETWORK, TAB_CONSOLE, TAB_INSIGHTS, TAB_DATABASE, TabId } from '../../utils/constants'
+import { Search, Terminal, Activity, Database, Network, Trash2, X, Smartphone } from 'lucide-react'
+import { TAB_NETWORK, TAB_CONSOLE, TAB_INSIGHTS, TAB_DATABASE, TAB_LOGCAT, TabId } from '../../utils/constants'
 
 interface CommandPaletteProps {
   isOpen: boolean
@@ -9,6 +9,7 @@ interface CommandPaletteProps {
   onClearNetwork: () => void
   onClearConsole: () => void
   onClearInsights: () => void
+  onClearLogcat: () => void
 }
 
 interface Command {
@@ -24,7 +25,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onSelectTab,
   onClearNetwork,
   onClearConsole,
-  onClearInsights
+  onClearInsights,
+  onClearLogcat
 }) => {
   const [search, setSearch] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -36,9 +38,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     { id: 'tab-console', label: 'Ir para Console', icon: <Terminal size={16} />, action: () => onSelectTab(TAB_CONSOLE) },
     { id: 'tab-insights', label: 'Ir para Insights', icon: <Activity size={16} />, action: () => onSelectTab(TAB_INSIGHTS) },
     { id: 'tab-database', label: 'Ir para Banco de Dados', icon: <Database size={16} />, action: () => onSelectTab(TAB_DATABASE) },
+    { id: 'tab-logcat', label: 'Ir para Logcat', icon: <Smartphone size={16} />, action: () => onSelectTab(TAB_LOGCAT) },
     { id: 'clear-network', label: 'Limpar Rede', icon: <Trash2 size={16} />, action: onClearNetwork },
     { id: 'clear-console', label: 'Limpar Console', icon: <Trash2 size={16} />, action: onClearConsole },
-    { id: 'clear-insights', label: 'Limpar Insights', icon: <Trash2 size={16} />, action: onClearInsights }
+    { id: 'clear-insights', label: 'Limpar Insights', icon: <Trash2 size={16} />, action: onClearInsights },
+    { id: 'clear-logcat', label: 'Limpar Logcat', icon: <Trash2 size={16} />, action: onClearLogcat }
   ]
 
   const filteredCommands = commands.filter(c => c.label.toLowerCase().includes(search.toLowerCase()))

@@ -5,11 +5,14 @@ import type { DevInspectorEvent, HttpRequestPayload } from './protocol'
 import { AnomalyDetector } from './anomaly-detector'
 import { RequestDiffer } from './request-differ'
 import { SessionStore } from './session-store'
+import { runAdb } from './adb'
 
 export interface ClientInfo {
   id: string
   platform: string
   appName: string
+  deviceName?: string
+  packageName?: string
   connectedAt: number
 }
 
@@ -199,22 +202,9 @@ export class DevToolsServer extends EventEmitter {
     this.httpServer.listen(this.port, '0.0.0.0', () => {
       console.log(`[DevInspector] Server listening on 0.0.0.0:${this.port} (Native WebSockets)`)
       
-      const { exec } = require('child_process')
+      // Sem dispositivo conectado o reverse falha — é esperado, tenta de novo no próximo ciclo.
       const setupAdbTunnel = () => {
-        exec(`adb reverse tcp:${this.port} tcp:${this.port}`, (err: any) => {
-          if (err) {
-            if (process.platform === 'win32') {
-              const localAppData = process.env.LOCALAPPDATA
-              if (localAppData) {
-                const adbPath = `${localAppData}\\Android\\Sdk\\platform-tools\\adb.exe`
-                exec(`"${adbPath}" reverse tcp:${this.port} tcp:${this.port}`, () => {})
-              }
-            } else if (process.platform === 'darwin') {
-              const macPath = `${process.env.HOME}/Library/Android/sdk/platform-tools/adb`
-              exec(`"${macPath}" reverse tcp:${this.port} tcp:${this.port}`, () => {})
-            }
-          }
-        })
+        runAdb(['reverse', `tcp:${this.port}`, `tcp:${this.port}`]).catch(() => {})
       }
       
       setupAdbTunnel()
@@ -237,6 +227,8 @@ export class DevToolsServer extends EventEmitter {
             id: clientId,
             platform: inspectorEvent.payload.platform || 'unknown',
             appName: inspectorEvent.payload.appName || 'React Native App',
+            deviceName: inspectorEvent.payload.deviceName,
+            packageName: inspectorEvent.payload.packageName,
             connectedAt: Date.now()
           })
           break

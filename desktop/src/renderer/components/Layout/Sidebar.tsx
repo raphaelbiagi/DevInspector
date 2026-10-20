@@ -1,8 +1,9 @@
 import React from 'react'
-import { Network, TerminalSquare, Activity, Database, Trash2, Download } from 'lucide-react'
-import { TAB_NETWORK, TAB_CONSOLE, TAB_INSIGHTS, TAB_DATABASE, TabId } from '../../utils/constants'
+import { Network, TerminalSquare, Activity, Database, Trash2, Download, Smartphone } from 'lucide-react'
+import { TAB_NETWORK, TAB_CONSOLE, TAB_INSIGHTS, TAB_DATABASE, TAB_LOGCAT, TabId } from '../../utils/constants'
 import { useConsoleStore } from '../../stores/consoleStore'
 import { useTimelineStore } from '../../stores/timelineStore'
+import { useLogcatStore } from '../../stores/logcatStore'
 
 interface SidebarProps {
   activeTab: TabId
@@ -56,6 +57,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const anomalyCount = useTimelineStore((state) =>
     state.items.filter(i => i.type === 'anomaly').length
   )
+  const logcatRunning = useLogcatStore((state) => state.status.running)
 
   return (
     <div className="app-sidebar" style={{ paddingTop: 16 }}>
@@ -104,6 +106,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
             style={{ border: 'none', background: activeTab === TAB_DATABASE ? 'var(--bg-active)' : 'transparent', padding: 12, borderRadius: 'var(--radius-md)', cursor: 'pointer', opacity: activeTab === TAB_DATABASE ? 1 : 0.5, transition: 'all 0.2s' }}
           >
             <Database size={22} color={activeTab === TAB_DATABASE ? 'var(--color-accent)' : 'var(--color-text)'} strokeWidth={2} />
+          </button>
+        </div>
+
+        <div className="tooltip-wrapper" style={{ width: '100%', display: 'flex', justifyContent: 'center', position: 'relative' }}>
+          <button
+            title="Logcat (Android)"
+            className={`sidebar-btn ${activeTab === TAB_LOGCAT ? 'active' : ''}`}
+            onClick={() => onTabChange(TAB_LOGCAT)}
+            style={{ border: 'none', background: activeTab === TAB_LOGCAT ? 'var(--bg-active)' : 'transparent', padding: 12, borderRadius: 'var(--radius-md)', cursor: 'pointer', opacity: activeTab === TAB_LOGCAT ? 1 : 0.5, transition: 'all 0.2s' }}
+          >
+            <Smartphone size={22} color={activeTab === TAB_LOGCAT ? 'var(--color-accent)' : 'var(--color-text)'} strokeWidth={2} />
+            {logcatRunning && <span style={{ position: 'absolute', top: 10, right: 14, width: 8, height: 8, borderRadius: '50%', background: 'var(--color-success)' }} />}
           </button>
         </div>
       </div>

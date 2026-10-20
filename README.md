@@ -10,6 +10,7 @@ DevTools externo para React Native e Expo. Roda como um app desktop e se conecta
 | **Console** | `log`, `info`, `warn`, `error` e `table` com contadores por nível, busca, stack trace expansível e captura de crashes e promises rejeitadas |
 | **Insights** | Detecção automática de anomalias: requisições lentas, respostas grandes, status 4xx/5xx e floods de log repetido |
 | **Database** | Explorador de SQLite — tabelas do app conectado *ou* arquivos `.db` abertos direto no desktop, com grid paginado, editor SQL com syntax highlight e queries salvas |
+| **Logcat** | Logcat do Android lido pelo `adb` do desktop — funciona mesmo com o app desconectado ou após um crash nativo. Filtra pelo pacote do app (detectado no handshake em projetos Expo), nível mínimo, `tag:Nome` e `-exclusão`; avisa com um toast quando aparece um `FATAL EXCEPTION` |
 
 ## Instalação
 

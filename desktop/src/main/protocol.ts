@@ -23,7 +23,8 @@ export interface HandshakePayload {
   osVersion: string
   deviceName: string
   reactNativeVersion: string
-  sessionId: string       // UUID gerado no momento da conexão
+  packageName?: string    // applicationId (Android) / bundle id (iOS); SDKs antigos não enviam
+  sessionId: string      // UUID gerado no momento da conexão
   connectedAt: number     // timestamp ms
 }
 

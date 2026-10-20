@@ -1,3 +1,5 @@
+import type { LogcatDevice, LogcatEntry, LogcatStatus } from './logcat'
+
 export interface LocalDatabaseInfo {
   id: string
   name: string
@@ -33,6 +35,14 @@ export interface DevInspectorAPI {
   removeLocalDb: (id: string) => Promise<boolean>
   listLocalDbs: () => Promise<LocalDatabaseInfo[]>
   getPathForFile?: (file: File) => string
+  // Logcat
+  logcatListDevices: () => Promise<{ devices: LogcatDevice[]; error: string | null }>
+  logcatListPackages: (serial: string) => Promise<string[]>
+  logcatStart: (options: { serial: string; packageName?: string | null }) => Promise<LogcatStatus>
+  logcatStop: () => Promise<LogcatStatus>
+  logcatGetStatus: () => Promise<LogcatStatus>
+  onLogcatEntries: (callback: (data: LogcatEntry[]) => void) => () => void
+  onLogcatStatus: (callback: (data: LogcatStatus) => void) => () => void
 }
 
 declare global {
@@ -45,6 +55,8 @@ export interface ClientInfo {
   id: string
   platform: string
   appName: string
+  deviceName?: string
+  packageName?: string
   connectedAt: number
 }
 

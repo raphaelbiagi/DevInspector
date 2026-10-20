@@ -12,8 +12,10 @@ import { useNetworkStore } from './stores/networkStore'
 import { useConsoleStore } from './stores/consoleStore'
 import { useTimelineStore } from './stores/timelineStore'
 import { useConnectionStore } from './stores/connectionStore'
-import { TAB_NETWORK, TAB_CONSOLE, TAB_INSIGHTS, TAB_DATABASE, TabId } from './utils/constants'
+import { useLogcatStore } from './stores/logcatStore'
+import { TAB_NETWORK, TAB_CONSOLE, TAB_INSIGHTS, TAB_DATABASE, TAB_LOGCAT, TabId } from './utils/constants'
 import { DatabasePanel } from './components/Database/DatabasePanel'
+import { LogcatPanel } from './components/Logcat/LogcatPanel'
 import { CommandPalette } from './components/shared/CommandPalette'
 import type { ToastDetail } from './utils/notify'
 
@@ -35,6 +37,7 @@ export const App: React.FC = () => {
   const clearNetwork = useNetworkStore(state => state.clearRequests)
   const clearConsole = useConsoleStore(state => state.clearLogs)
   const clearInsights = useTimelineStore(state => state.clearAll)
+  const clearLogcat = useLogcatStore(state => state.clear)
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false)
   const [toast, setToast] = useState<ToastDetail | null>(null)
 
@@ -79,6 +82,11 @@ export const App: React.FC = () => {
     if (activeTab === TAB_NETWORK) clearNetwork()
     if (activeTab === TAB_CONSOLE) clearConsole()
     if (activeTab === TAB_INSIGHTS) clearInsights()
+    if (activeTab === TAB_LOGCAT) {
+      // O logcat não passa pelo SDK: não há buffer no app para limpar.
+      clearLogcat()
+      return
+    }
     // also clear client-side buffer
     if (window.devInspector) {
       window.devInspector.clearClientLogs()
@@ -124,9 +132,16 @@ export const App: React.FC = () => {
             </div>
           )}
 
+          {activeTab === TAB_LOGCAT && (
+            <div style={{ height: '100%' }}>
+              <LogcatPanel />
+            </div>
+          )}
+
         </div>
 
-        {!connected && activeTab !== TAB_DATABASE && (
+        {/* Banco local e logcat funcionam sem o app conectado — o logcat é útil justamente quando o JS morreu. */}
+        {!connected && activeTab !== TAB_DATABASE && activeTab !== TAB_LOGCAT && (
           <div className="loading-overlay animate-fade-in">
             <div className="loading-card">
               <svg className="lucide-spinner animate-spin" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -171,6 +186,7 @@ export const App: React.FC = () => {
           onClearNetwork={clearNetwork}
           onClearConsole={clearConsole}
           onClearInsights={clearInsights}
+          onClearLogcat={clearLogcat}
         />
       </div>
     </div>
